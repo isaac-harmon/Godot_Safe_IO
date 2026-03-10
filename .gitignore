@@ -1,0 +1,7 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+addons/*
+!addons/safe_io
+addons/safe_io/resource_register.res
