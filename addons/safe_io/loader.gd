@@ -2,6 +2,17 @@ class_name SafeIOLoader extends ResourceFormatLoader
 
 var _is_compressed: bool
 
+# TODO: Add cache for loaded reosurces
+
+## Array of [Dictionary[int, Resource]] for all loaded sub-resources.
+## Access the relevant stack by reading the last index.
+var _dependency_cache: Array[Dictionary]
+
+## Array of [Dictionary[int, Variant]] for all unloaded resource data.
+## Sub-resources will have a dictionary of data, and external resources will have just the path.
+## Access the relevant stack by reading the last index.
+var _raw_dependency_data: Array[Dictionary]
+
 
 func _get_recognized_extensions() -> PackedStringArray:
 	return SafeIO.get_recognized_extensions()
@@ -39,9 +50,20 @@ func _load(
 	if result is not Dictionary:
 		return result as Error
 	
+	_dependency_cache.push_back({})
+	_raw_dependency_data.push_back({})
+	
+	if SafeIO.DEPENDENCIES_MARKER in result:
+		var dependencies = result[SafeIO.DEPENDENCIES_MARKER] as Dictionary
+		for entry in dependencies:
+			_raw_dependency_data[-1][_deserialize_value(entry) as int] = dependencies[entry]
+	
 	var resource := _deserialize_resource(result)
 	if resource == null:
 		return Error.ERR_FILE_CORRUPT
+	
+	_dependency_cache.pop_back()
+	_raw_dependency_data.pop_back()
 	
 	resource.resource_path = path
 	return resource
@@ -72,56 +94,61 @@ func _load_file(path: String):
 		return json.data
 
 
-## Verifies the safety of a data given it contains either a relative path or a uid,
+func _load_dependency(id: int) -> Resource:
+	
+	if id in _dependency_cache[-1]:
+		return _dependency_cache[-1][id]
+	
+	var data = _raw_dependency_data[-1].get(id)
+	if data is Dictionary:
+		_dependency_cache[-1][id] = _deserialize_resource(data)
+	
+	elif data is String:
+		_dependency_cache[-1][id] = _load_external_resource(data)
+	
+	else:
+		return null
+	
+	return _dependency_cache[-1][id]
+
+
+## Verifies the safety of the resource at [param path],
 ## and if safe, will load and return the resource.
-func _load_external_resource(uid_path: String) -> Resource:
+func _load_external_resource(path: String) -> Resource:
 	
 	var register = SafeIO.get_register()
 	if not register:
 		return null
 	
-	if not register.is_resource_safe(uid_path):
-		var path := ResourceUID.uid_to_path(uid_path)
-		push_error("[SafeIO]: Attempted to load unsafe external resource \"%s\"! " % path)
+	if not register.is_resource_safe(path):
 		return null
 	
-	return load(uid_path)
+	return load(path)
 
 
 ## Converts any valid [Dictionary] into its corresponding type.
 ## Returns the [Resource] on success or a null value on failure.
 func _deserialize_resource(data: Dictionary) -> Resource:
 	
-	var register = SafeIO.get_register()
-	if not register:
-		return null
-	
 	var type := str(data.get(SafeIO.TYPE_MARKER))
-	var resource: Resource
-	
-	if ClassDB.class_exists(type):
-		resource = ClassDB.instantiate(type)
-	
-	elif register.is_resource_safe(type):
-		
-		var script := load(type)
-		
-		if script is not Script:
-			var path := ResourceUID.uid_to_path(type)
-			push_error("[SafeIO]: Resource \"%s\" is not a valid type! " % path)
-			return null
-		
-		resource = script.new()
-	
-	else:
-		var path := ResourceUID.uid_to_path(type)
-		push_error("[SafeIO]: Denied load of unsafe resource \"%s\"! " % path)
+	var resource := _instantiate_resource(type)
+	if resource == null:
 		return null
 	
 	for property in SafeIO.get_serializeable_properties(resource):
-		var json_name := SafeIO.get_json_name(property)
-		if data.has(json_name):
-			resource.set(property, _deserialize_value(data[json_name]))
+		
+		var json_name := SafeIO.get_json_name(property["name"])
+		if not json_name in data:
+			continue
+		
+		var value = _deserialize_value(data[json_name])
+		
+		if property["type"] == TYPE_ARRAY or property["type"] == TYPE_DICTIONARY:
+			var current = resource.get(property["name"])
+			current.assign(value)
+			continue
+		
+		resource.set(property["name"], value)
 	
 	return resource
 
@@ -131,21 +158,50 @@ func _deserialize_resource(data: Dictionary) -> Resource:
 func _deserialize_value(value):
 	
 	if value is Dictionary:
-		if SafeIO.TYPE_MARKER in value:
-			return _deserialize_resource(value)
 		
-		if SafeIO.EXTERNAL_FILE_MARKER in value:
-			return _load_external_resource(value)
-		
-		if "type" in value and "args" in value:
+		if "args" in value and "type" in value:
 			return JSON.to_native(value)
 		
 		var dict: Dictionary
 		for key in value:
-			dict[key] = _deserialize_value(value[key])
+			dict[_deserialize_value(key)] = _deserialize_value(value[key])
 		return dict
 	
 	if value is Array:
 		return value.map(_deserialize_value)
 	
+	if value is String:
+		
+		if value == SafeIO.NULL_MARKER:
+			return null
+		
+		if value.begins_with(SafeIO.OBJECT_MARKER):
+			return _load_dependency(value.trim_prefix(SafeIO.OBJECT_MARKER).to_int())
+	
+	if value == null:
+		return null
+	
 	return value if _is_compressed else JSON.to_native(value)
+
+
+func _instantiate_resource(type: String) -> Resource:
+	
+	var register = SafeIO.get_register()
+	if not register:
+		return null
+	
+	if ClassDB.class_exists(type):
+		
+		if not ClassDB.is_parent_class(type, &"Resource"):
+			return null
+		
+		return ClassDB.instantiate(type)
+	
+	if not register.is_resource_safe(type):
+		return null
+	
+	var script := load(type)
+	if script is not Script:
+		return null
+	
+	return script.new()

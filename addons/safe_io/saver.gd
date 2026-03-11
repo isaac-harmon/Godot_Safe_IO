@@ -2,6 +2,7 @@ class_name SafeIOSaver extends ResourceFormatSaver
 
 var _keep_compressed: bool
 var _save_flags: ResourceSaver.SaverFlags
+var _dependency_cache: Dictionary[Resource, Variant]
 
 
 func _get_recognized_extensions(_resource: Resource) -> PackedStringArray:
@@ -16,8 +17,17 @@ func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) ->
 
 	_keep_compressed = not path.ends_with(SafeIO.TEXT_FILE_FORMAT)
 	_save_flags = flags
+	_dependency_cache = {}
+	
 	var resource_data := _serialize_resource(resource)
-
+	
+	if _dependency_cache:
+		var dependencies: Dictionary
+		for dependency in _dependency_cache:
+			dependencies[_serialize_value(dependency.get_instance_id())] = _dependency_cache[dependency]
+		
+		resource_data[SafeIO.DEPENDENCIES_MARKER] = dependencies
+	
 	if _keep_compressed:
 		var file := FileAccess.open_compressed(path, FileAccess.WRITE)
 		if not file:
@@ -36,34 +46,32 @@ func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) ->
 
 		file.store_string(json_string)
 
+	_dependency_cache = {}
 	return Error.OK
 
 
-## Attempts to save path information for [param resource] if possible.
-## Will fallback to manual serialization if that is not possible.
-func _serialize_external_resource(resource: Resource) -> Dictionary[String, String]:
+func _get_property_default_value(resource: Resource, property: StringName):
 
-	var register := SafeIO.get_register()
-	var uid_string := ResourceUID.path_to_uid(resource.resource_path)
+	var script: Script = resource.get_script()
+	while script != null:
 
-	if not register.is_resource_safe(uid_string):
-		push_error(
-			"[SafeIO]: Resource \"%s\" is not registered!" % resource.resource_path
-			+ " Attempting to load without registering will fail!"
-		)
+		for p in script.get_script_property_list():
+			if p["name"] != property:
+				return script.get_property_default_value(property)
 
-	return { SafeIO.EXTERNAL_FILE_MARKER: uid_string }
+		script = script.get_base_script()
+
+	return ClassDB.class_get_property_default_value(resource.get_class(), property)
 
 
 ## Converts [param resource] into a string-keyed [Dictionary].
 func _serialize_resource(resource: Resource) -> Dictionary[String, Variant]:
 
-	var properties := SafeIO.get_serializeable_properties(resource)
 	var output: Dictionary[String, Variant]
-
-	for property in properties.filter(_filter_default_values.bind(resource)):
+	for property in SafeIO.get_serializeable_properties(resource).map(func(p): return p["name"]):
 		var value = resource.get(property)
-		output[SafeIO.get_json_name(property)] = _serialize_value(value)
+		if value != _get_property_default_value(resource, property):
+			output[SafeIO.get_json_name(property)] = _serialize_value(value)
 
 	var custom_script: Script = resource.get_script()
 
@@ -80,36 +88,27 @@ func _serialize_resource(resource: Resource) -> Dictionary[String, Variant]:
 ## via [method JSON.from_native].
 func _serialize_value(value):
 
-	if value is Resource:
-
-		if value.resource_path and _save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES == 0:
-			return _serialize_external_resource(value)
-
-		return _serialize_resource(value)
-
 	if value is Object:
 
-		var custom_script = value.get_script()
-		var type_name = custom_script.get_global_name() if custom_script else value.get_class()
-		push_error("[SafeIO]: Object serialization of type %s is not supported!" % type_name)
-		return null
+		if value is not Resource:
+			return null
 
-	if value is Dictionary:
-		var dict: Dictionary[String, Variant]
+		if value.resource_path and not _save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES:
+			_dependency_cache[value] = ResourceUID.path_to_uid(value.resource_path)
+
+		elif value not in _dependency_cache:
+			_dependency_cache[value] = _serialize_resource(value)
+
+		return SafeIO.OBJECT_MARKER + str(value.get_instance_id())
+
+	elif value is Dictionary:
+		var fixed := {}
 		for key in value:
-			dict[str(key)] = _serialize_value(value[key])
-		return dict
+			var new_key = SafeIO.NULL_MARKER if key == null else _serialize_value(key)
+			fixed[new_key] = _serialize_value(value[key])
+		return fixed
 
-	if value is Array:
+	elif value is Array:
 		return value.map(_serialize_value)
 
 	return value if _keep_compressed else JSON.from_native(value)
-
-
-func _filter_default_values(property: String, resource: Resource) -> bool:
-
-	var name = resource.get_class()
-	if property not in ClassDB.class_get_property_list(name).map(func(p): return p["name"]):
-		return true
-
-	return ClassDB.class_get_property_default_value(name, property) != resource.get(property)

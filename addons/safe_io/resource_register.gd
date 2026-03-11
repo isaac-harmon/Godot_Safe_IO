@@ -27,14 +27,22 @@ func get_registered_resource_type(file_path: String) -> StringName:
 	return _resource_register.get(ResourceUID.path_to_uid(file_path), &"")
 
 
-## Returns whether the resource path is registered
 func is_resource_registered(file_path: StringName) -> bool:
 	return ResourceUID.path_to_uid(file_path) in _resource_register
 
 
-## Returns whether the file is trusted or not.
 func is_resource_safe(file_path: StringName) -> bool:
-	return ResourceLoader.exists(file_path) and is_resource_registered(file_path)
+	
+	if not ResourceLoader.exists(file_path):
+		return false
+	
+	if is_resource_registered(file_path):
+		return true
+	
+	if file_path.begins_with("uid://"):
+		file_path = ResourceUID.uid_to_path(file_path)
+	
+	return file_path.get_extension() in SafeIO.get_recognized_extensions()
 
 
 func _bake() -> void:

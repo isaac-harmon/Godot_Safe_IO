@@ -5,3 +5,6 @@
 addons/*
 !addons/safe_io
 addons/safe_io/resource_register.res
+
+demo/text_resource.json5*
+demo/binary_resource.save*

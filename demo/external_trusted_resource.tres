@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="TestResource" format=4 uid="uid://yo7l3d8xe2wa"]
+
+[ext_resource type="Script" uid="uid://bgetirful6b64" path="res://demo/testing_resource.gd" id="1_tohpy"]
+
+[resource]
+script = ExtResource("1_tohpy")
+boolean = true
+integer = 1
+floating_point = 3.0
+enumeration = 2
+string = "7"
+string_name = &"9"
+metadata/_custom_type_script = "uid://bgetirful6b64"

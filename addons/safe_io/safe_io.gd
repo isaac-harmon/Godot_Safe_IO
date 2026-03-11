@@ -3,23 +3,25 @@
 const TEXT_FILE_FORMAT = "json5"
 const BINARY_FILE_FORMAT = "save"
 
-const TYPE_MARKER = "__type__"
-const EXTERNAL_FILE_MARKER = "__external__"
+const TYPE_MARKER = "<type>"
+const DEPENDENCIES_MARKER = "<dependencies>"
+const OBJECT_MARKER = "<obj>"
+const NULL_MARKER = "<null>"
 
-const _REGISTERED_DIRS = "safe_io/general/registered_resource_directories"
-const _REGISTERED_FILES = "safe_io/general/registered_resource_files"
-const _CUSTOM_FILE_PATH = "safe_io/general/custom_register_file_path"
+const REGISTERED_DIRS = "safe_io/general/registered_resource_directories"
+const REGISTERED_FILES = "safe_io/general/registered_resource_files"
+const CUSTOM_FILE_PATH = "safe_io/general/custom_register_file_path"
 
 var rebake_required := true
 
 
 func _enable_plugin() -> void:
 	
-	ProjectSettings.set_setting(_REGISTERED_DIRS, PackedStringArray())
-	ProjectSettings.set_initial_value(_REGISTERED_DIRS, PackedStringArray())
-	ProjectSettings.set_as_basic(_REGISTERED_DIRS, true)
+	ProjectSettings.set_setting(REGISTERED_DIRS, PackedStringArray())
+	ProjectSettings.set_initial_value(REGISTERED_DIRS, PackedStringArray())
+	ProjectSettings.set_as_basic(REGISTERED_DIRS, true)
 	ProjectSettings.add_property_info({
-		"name": _REGISTERED_DIRS,
+		"name": REGISTERED_DIRS,
 		"type": TYPE_PACKED_STRING_ARRAY,
 		"hint_string": "%d/%d:" % [
 			TYPE_STRING,
@@ -27,11 +29,11 @@ func _enable_plugin() -> void:
 		]
 	})
 	
-	ProjectSettings.set_setting(_REGISTERED_FILES, PackedStringArray())
-	ProjectSettings.set_initial_value(_REGISTERED_FILES, PackedStringArray())
-	ProjectSettings.set_as_basic(_REGISTERED_FILES, true)
+	ProjectSettings.set_setting(REGISTERED_FILES, PackedStringArray())
+	ProjectSettings.set_initial_value(REGISTERED_FILES, PackedStringArray())
+	ProjectSettings.set_as_basic(REGISTERED_FILES, true)
 	ProjectSettings.add_property_info({
-		"name": _REGISTERED_FILES,
+		"name": REGISTERED_FILES,
 		"type": TYPE_PACKED_STRING_ARRAY,
 		"hint_string": "%d/%d:" % [
 			TYPE_STRING,
@@ -39,10 +41,10 @@ func _enable_plugin() -> void:
 		]
 	})
 	
-	ProjectSettings.set_setting(_CUSTOM_FILE_PATH, "")
-	ProjectSettings.set_initial_value(_CUSTOM_FILE_PATH, "")
+	ProjectSettings.set_setting(CUSTOM_FILE_PATH, "")
+	ProjectSettings.set_initial_value(CUSTOM_FILE_PATH, "")
 	ProjectSettings.add_property_info({
-		"name": _CUSTOM_FILE_PATH,
+		"name": CUSTOM_FILE_PATH,
 		"type": TYPE_STRING,
 		"hint": PROPERTY_HINT_FILE
 	})
@@ -51,9 +53,9 @@ func _enable_plugin() -> void:
 
 
 func _disable_plugin() -> void:
-	ProjectSettings.set_setting(_REGISTERED_FILES, null)
-	ProjectSettings.set_setting(_REGISTERED_DIRS, null)
-	ProjectSettings.set_setting(_CUSTOM_FILE_PATH, null)
+	ProjectSettings.set_setting(REGISTERED_FILES, null)
+	ProjectSettings.set_setting(REGISTERED_DIRS, null)
+	ProjectSettings.set_setting(CUSTOM_FILE_PATH, null)
 
 
 func _build() -> bool:
@@ -72,7 +74,7 @@ func _build() -> bool:
 ## [b]Incorrect file type[/b]: Throws an error and returns null.
 static func get_register() -> SafeIOResourceRegister:
 	
-	var file_path = ProjectSettings.get_setting(_CUSTOM_FILE_PATH)
+	var file_path = ProjectSettings.get_setting(CUSTOM_FILE_PATH)
 	if not file_path:
 		file_path = "res://addons/safe_io/resource_register.res"
 	
@@ -116,13 +118,10 @@ static func get_json_name(name: String) -> String:
 	return name.lstrip("_").to_snake_case()
 
 
-## Returns an array of property names that can be serialized by [SafeIOSaver].
+## Returns an array of Dictionaries of property data that can be serialized by [SafeIOSaver].
+## Entries are identical to those from [method Object.get_property_list].
 static func get_serializeable_properties(resource: Resource) -> Array:
-	return (
-		resource.get_property_list()
-		.filter(_is_valid_property)
-		.map(func(p): return p["name"])
-	)
+	return resource.get_property_list().filter(_is_valid_property)
 
 
 static func _is_valid_property(property: Dictionary) -> bool:

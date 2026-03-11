@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="SafeIO"
+run/main_scene="uid://b8mgm3yfols8v"
 config/features=PackedStringArray("4.6", "Forward Plus")
 
 [dotnet]
@@ -28,3 +29,7 @@ enabled=PackedStringArray("res://addons/gut/plugin.cfg", "res://addons/safe_io/p
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+
+[safe_io]
+
+general/registered_resource_files=PackedStringArray("uid://bgetirful6b64", "uid://yo7l3d8xe2wa")

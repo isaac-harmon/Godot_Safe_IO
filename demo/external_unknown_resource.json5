@@ -1,0 +1,250 @@
+{
+	"<type>": "uid://bgetirful6b64",
+	"aabb": {
+		"args": [
+			1.0,
+			1.0,
+			1.0,
+			1.0,
+			1.0,
+			1.0
+		],
+		"type": "AABB"
+	},
+	"array": [
+		"i:1",
+		"f:2.0",
+		"s:3"
+	],
+	"basis": {
+		"args": [
+			1.0,
+			0.0,
+			0.0,
+			0.0,
+			1.0,
+			0.0,
+			0.0,
+			0.0,
+			-1.0
+		],
+		"type": "Basis"
+	},
+	"boolean": true,
+	"color": {
+		"args": [
+			0.960784316062927,
+			0.960784316062927,
+			0.862745106220245,
+			1.0
+		],
+		"type": "Color"
+	},
+	"dictionary": {
+		"f:2.0": "f:2.0",
+		"i:1": "i:1",
+		"s:3": "s:3"
+	},
+	"enumeration": "i:3",
+	"floating_point": "f:2.0",
+	"integer": "i:1",
+	"node_path": "np:.",
+	"packed_byte_array": {
+		"args": [
+			1,
+			2,
+			3
+		],
+		"type": "PackedByteArray"
+	},
+	"packed_color_array": {
+		"args": [
+			0.960784316062927,
+			0.960784316062927,
+			0.862745106220245,
+			1.0
+		],
+		"type": "PackedColorArray"
+	},
+	"packed_float_32_array": {
+		"args": [
+			1.0,
+			2.0,
+			3.0
+		],
+		"type": "PackedFloat32Array"
+	},
+	"packed_float_64_array": {
+		"args": [
+			1.0,
+			2.0,
+			3.0
+		],
+		"type": "PackedFloat64Array"
+	},
+	"packed_int_32_array": {
+		"args": [
+			1,
+			2,
+			3
+		],
+		"type": "PackedInt32Array"
+	},
+	"packed_int_64_array": {
+		"args": [
+			1,
+			2,
+			3
+		],
+		"type": "PackedInt64Array"
+	},
+	"packed_string_array": {
+		"args": [
+			"1",
+			"2",
+			"3"
+		],
+		"type": "PackedStringArray"
+	},
+	"packed_vector_2_array": {
+		"args": [
+			1.0,
+			1.0
+		],
+		"type": "PackedVector2Array"
+	},
+	"packed_vector_3_array": {
+		"args": [
+			1.0,
+			1.0,
+			1.0
+		],
+		"type": "PackedVector3Array"
+	},
+	"packed_vector_4_array": {
+		"args": [
+			1.0,
+			1.0,
+			1.0,
+			1.0
+		],
+		"type": "PackedVector4Array"
+	},
+	"plane": {
+		"args": [
+			0.0,
+			0.0,
+			1.0,
+			0.0
+		],
+		"type": "Plane"
+	},
+	"rect_2": {
+		"args": [
+			1.0,
+			1.0,
+			1.0,
+			1.0
+		],
+		"type": "Rect2"
+	},
+	"rect_2i": {
+		"args": [
+			1,
+			1,
+			1,
+			1
+		],
+		"type": "Rect2i"
+	},
+	"resource_local_to_scene": false,
+	"resource_name": "s:",
+	"string": "s:4",
+	"string_name": "sn:5",
+	"transform_2d": {
+		"args": [
+			-1.0,
+			0.0,
+			0.0,
+			1.0,
+			0.0,
+			0.0
+		],
+		"type": "Transform2D"
+	},
+	"transform_3d": {
+		"args": [
+			1.0,
+			0.0,
+			0.0,
+			0.0,
+			-1.0,
+			0.0,
+			0.0,
+			0.0,
+			1.0,
+			0.0,
+			0.0,
+			0.0
+		],
+		"type": "Transform3D"
+	},
+	"typed_array": [
+		"i:1",
+		"i:2",
+		"i:3"
+	],
+	"typed_dictionary": {
+		"i:1": "i:1",
+		"i:2": "i:2",
+		"i:3": "i:3"
+	},
+	"vector_2": {
+		"args": [
+			1.0,
+			1.0
+		],
+		"type": "Vector2"
+	},
+	"vector_2i": {
+		"args": [
+			1,
+			1
+		],
+		"type": "Vector2i"
+	},
+	"vector_3": {
+		"args": [
+			1.0,
+			1.0,
+			1.0
+		],
+		"type": "Vector3"
+	},
+	"vector_3i": {
+		"args": [
+			1,
+			1,
+			1
+		],
+		"type": "Vector3i"
+	},
+	"vector_4": {
+		"args": [
+			1.0,
+			1.0,
+			1.0,
+			1.0
+		],
+		"type": "Vector4"
+	},
+	"vector_4i": {
+		"args": [
+			1,
+			1,
+			1,
+			1
+		],
+		"type": "Vector4i"
+	}
+}
