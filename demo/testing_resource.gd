@@ -16,6 +16,7 @@ enum TestEnum {
 @export var string_name: StringName
 @export var node_path: NodePath
 
+@export var self_ref: TestResource
 @export var sub_resource: TestResource
 @export var external_trusted_resource: TestResource
 @export var external_unknown_resource: TestResource
@@ -69,7 +70,7 @@ static func generate() -> TestResource:
 	var resource = TestResource.new()
 	var trusted_resource = load("res://demo/external_trusted_resource.tres")
 	var untrusted_resource = load("res://demo/external_untrusted_resource.tres")
-	var unknown_resource = load("res://demo/external_unknown_resource.json5")
+	var unknown_resource = load("res://demo/external_unknown_resource.sav")
 
 	resource.boolean = true
 	resource.integer = 1
@@ -82,7 +83,9 @@ static func generate() -> TestResource:
 
 	resource.sub_resource = TestResource.new()
 	resource.sub_resource.boolean = true
+	resource.sub_resource.sub_resource = resource
 
+	resource.self_ref = resource
 	resource.external_trusted_resource = trusted_resource
 	resource.external_unknown_resource = unknown_resource
 	resource.external_untrusted_resource = untrusted_resource

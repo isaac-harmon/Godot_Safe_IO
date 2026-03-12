@@ -2,6 +2,8 @@ class_name SafeIOSaver extends ResourceFormatSaver
 
 var _keep_compressed: bool
 var _save_flags: ResourceSaver.SaverFlags
+
+var _base_resource: Resource
 var _dependency_cache: Dictionary[Resource, Variant]
 
 
@@ -15,7 +17,8 @@ func _recognize(resource: Resource) -> bool:
 
 func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) -> Error:
 
-	_keep_compressed = not path.ends_with(SafeIO.TEXT_FILE_FORMAT)
+	_base_resource = resource
+	_keep_compressed = path.ends_with(SafeIO.BINARY_FILE_FORMAT)
 	_save_flags = flags
 	_dependency_cache = {}
 	
@@ -92,11 +95,15 @@ func _serialize_value(value):
 
 		if value is not Resource:
 			return null
+		
+		if value == _base_resource:
+			return SafeIO.ROOT_OBJECT_MARKER
 
 		if value.resource_path and not _save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES:
 			_dependency_cache[value] = ResourceUID.path_to_uid(value.resource_path)
 
 		elif value not in _dependency_cache:
+			_dependency_cache[value] = true
 			_dependency_cache[value] = _serialize_resource(value)
 
 		return SafeIO.OBJECT_MARKER + str(value.get_instance_id())

@@ -1,6 +1,6 @@
 extends GutTest
 
-const path = "res://demo/text_resource.json5"
+const path = "res://demo/binary_resource.bin"
 
 var expected: TestResource
 var actual: TestResource
@@ -10,9 +10,6 @@ func before_all() -> void:
 	var resource := TestResource.generate()
 	expected = resource.duplicate()
 	ResourceSaver.save(resource, path)
-
-
-func before_each():
 	actual = load(path)
 
 
@@ -42,6 +39,10 @@ func test_string_name_stored_correctly() -> void:
 
 func test_node_path_stored_correctly() -> void:
 	assert_eq(actual.node_path, expected.node_path)
+
+
+func test_self_ref_stored_correctly() -> void:
+	assert_eq(actual.self_ref, actual)
 
 
 func test_sub_resource_stored_correctly() -> void:
