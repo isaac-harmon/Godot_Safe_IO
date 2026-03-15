@@ -61,47 +61,15 @@ func _disable_plugin() -> void:
 
 func _build() -> bool:
 
-	if rebake_required and Engine.is_editor_hint():
-		SafeIOBakeRegister.new()._run()
+	if not rebake_required:
+		return true
 
-	return true
+	var register := SafeIO.get_register()
+	if not register:
+		return false
 
-
-## Attempts to load the [SafeIOResourceRegister] pointed to by the setting:
-## [member ProjectSetings.safe_io/general/custom_list_file_path].[br][br]
-## Returns one of the following options:[br][br]
-## [b]Load successful[/b]: The loaded resource.[br]
-## [b]No file found[/b]: A empty list resource with the correct path applied.[br]
-## [b]Incorrect file type[/b]: Throws an error and returns null.
-static func get_register() -> SafeIOResourceRegister:
-
-	var file_path = ProjectSettings.get_setting(CUSTOM_FILE_PATH)
-	if not file_path:
-		file_path = "res://addons/safe_io/resource_register.res"
-
-	if not ResourceLoader.exists(file_path):
-
-		if not Engine.is_editor_hint():
-			push_error("[SafeIO]: Register file \"%s\" does not exist!" % file_path)
-			return null
-
-		push_warning("[SafeIO]: Creating new register file at \"%s\"." % file_path)
-
-		var new_list := SafeIOResourceRegister.new()
-		new_list.take_over_path(file_path)
-		return new_list
-
-	var register := load(file_path) as SafeIOResourceRegister
-	var error := "[SafeIO]: Existing file at \"%s\" is not a valid TypeList! " % file_path
-
-	if not Engine.is_editor_hint():
-		assert(register is SafeIOResourceRegister, error)
-
-	elif register is not SafeIOResourceRegister:
-		push_error(error)
-		return null
-
-	return register
+	rebake_required = register._bake() != OK
+	return not rebake_required
 
 
 ## Returns an array of all file extentions recognized by [SafeIOSaver] and [SafeIOLoader].
@@ -112,17 +80,50 @@ static func get_recognized_extensions() -> PackedStringArray:
 	]
 
 
-## Converts a string to snake_case and strips leading underscores.
-## Used to ensure a consistent naming convention of properties,
-## regardless of the naming convention used in source code.
-static func get_json_name(name: String) -> String:
-	return name.lstrip("_").to_snake_case()
+## Attempts to load the [SafeIOResourceRegister] pointed to by the setting:
+## [member ProjectSetings.safe_io/general/custom_list_file_path].[br][br]
+## Returns one of the following options:[br][br]
+## [b]Load successful[/b]: The loaded register.[br]
+## [b]Incorrect file type or during runtime[/b]: Throws an error and returns null.[br]
+## [b]If no file found and in-editor[/b]: A newly generated register.
+static func get_register() -> SafeIOResourceRegister:
+
+	var file_path = ProjectSettings.get_setting(CUSTOM_FILE_PATH)
+	if file_path is not String:
+		file_path = "res://addons/safe_io/resource_register.res"
+
+	file_path = ResourceUID.ensure_path(file_path)
+
+	if not ResourceLoader.exists(file_path):
+
+		if not Engine.is_editor_hint():
+			push_error("[SafeIO]: Register file \"%s\" does not exist!" % file_path)
+			return null
+
+		print("[SafeIO]: Creating new register file at \"%s\"." % file_path)
+
+		var new_list := SafeIOResourceRegister.new()
+		new_list.take_over_path(file_path)
+		ResourceSaver.save(new_list)
+
+		return new_list
+
+	var register := load(file_path) as SafeIOResourceRegister
+	assert(register != null, "[SafeIO]: Existing file at \"%s\" is not a valid Register! " % file_path)
+	return register
 
 
 ## Returns an array of Dictionaries of property data that can be serialized by [SafeIOSaver].
 ## Entries are identical to those from [method Object.get_property_list].
 static func get_serializeable_properties(resource: Resource) -> Array:
 	return resource.get_property_list().filter(_is_valid_property)
+
+
+## Converts a string to snake_case and strips leading underscores.
+## Used to ensure a consistent naming convention of properties,
+## regardless of the naming convention used in source code.
+static func get_serialized_name(name: String) -> String:
+	return name.lstrip("_").to_snake_case()
 
 
 static func _is_valid_property(property: Dictionary) -> bool:

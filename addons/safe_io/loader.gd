@@ -4,6 +4,7 @@ class LoadData:
 	
 	var base_resource: Resource
 	var is_compressed: bool
+	var cache_mode: ResourceFormatLoader.CacheMode
 	
 	## Dictionary for all unloaded resource data.
 	## Sub-resources will have a dictionary of data, and external resources will have just the path.
@@ -41,12 +42,13 @@ func _handles_type(type: StringName) -> bool:
 	return true
 
 
-func _load(path: String, _original_path: String, _use_sub_threads: bool, _cache_mode: CacheMode):
+func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_mode: CacheMode):
 	
 	path = ResourceUID.ensure_path(path)
 	
 	var load_data := LoadData.new()
 	load_data.is_compressed = path.ends_with(SafeIO.BINARY_FILE_FORMAT)
+	load_data.cache_mode = cache_mode
 	
 	var result = _load_file(path, load_data.is_compressed)
 	if result is not Dictionary:
@@ -65,7 +67,7 @@ func _load(path: String, _original_path: String, _use_sub_threads: bool, _cache_
 	
 	_load_stack.pop_back()
 	
-	resource.resource_path = path
+	resource.take_over_path(path)
 	return resource
 
 
@@ -122,7 +124,13 @@ func _load_external_resource(path: String) -> Resource:
 	if not register.is_resource_safe(path):
 		return null
 	
-	return load(path)
+	var cache_mode: ResourceLoader.CacheMode
+	match _load_stack[-1].cache_mode:
+		CACHE_MODE_IGNORE_DEEP: cache_mode = ResourceLoader.CACHE_MODE_IGNORE_DEEP
+		CACHE_MODE_REPLACE_DEEP: cache_mode = ResourceLoader.CACHE_MODE_REPLACE_DEEP
+		_: cache_mode = ResourceLoader.CACHE_MODE_REUSE
+	
+	return ResourceLoader.load(path, "", cache_mode)
 
 
 ## Converts any valid [Dictionary] into its corresponding type.
@@ -136,7 +144,7 @@ func _deserialize_resource(data: Dictionary) -> Resource:
 	
 	for property in SafeIO.get_serializeable_properties(resource):
 		
-		var json_name := SafeIO.get_json_name(property["name"])
+		var json_name := SafeIO.get_serialized_name(property["name"])
 		if not json_name in data:
 			continue
 		
@@ -153,7 +161,6 @@ func _deserialize_resource(data: Dictionary) -> Resource:
 
 
 ## Converts [param value] into Variant-compatible types.
-## If saving as [code].json5[/code], values will be converted via [method JSON.to_native].
 func _deserialize_value(value):
 	
 	if value is Dictionary:
@@ -180,12 +187,14 @@ func _deserialize_value(value):
 		if value.begins_with(SafeIO.ROOT_OBJECT_MARKER):
 			return _load_stack[-1].base_resource
 	
-	if value == null:
-		return null
+	if value == null or _load_stack[-1].is_compressed:
+		return value
 	
-	return value if _load_stack[-1].is_compressed else JSON.to_native(value)
+	return JSON.to_native(value)
 
 
+## Instantiates a resource of the given type.
+## Expects the name of a built-in type, or the path to a custom script
 func _instantiate_resource(type: String) -> Resource:
 	
 	var register = SafeIO.get_register()
@@ -207,7 +216,7 @@ func _instantiate_resource(type: String) -> Resource:
 		return null
 	
 	var base_class: StringName = script.get_instance_base_type()
-	if base_class != &"Resource" and not ClassDB.is_parent_class(base_class, &"Resource"):
+	if not ClassDB.is_parent_class(base_class, &"Resource"):
 		return null
 	
 	var resource: Resource = script.new()

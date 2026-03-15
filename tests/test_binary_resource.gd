@@ -9,8 +9,12 @@ var actual: TestResource
 func before_all() -> void:
 	var resource := TestResource.generate()
 	expected = resource.duplicate()
-	ResourceSaver.save(resource, path)
-	actual = load(path)
+	ResourceSaver.save(resource, path, ResourceSaver.FLAG_CHANGE_PATH)
+	actual = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+
+
+func test_binary_resource_loaded() -> void:
+	assert_not_null(actual)
 
 
 func test_bool_stored_correctly() -> void:

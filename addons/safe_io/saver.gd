@@ -16,10 +16,11 @@ func _recognize(resource: Resource) -> bool:
 
 
 func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) -> Error:
-
-	_base_resource = resource
+	
 	_keep_compressed = path.ends_with(SafeIO.BINARY_FILE_FORMAT)
 	_save_flags = flags
+	
+	_base_resource = resource
 	_dependency_cache = {}
 	
 	var resource_data := _serialize_resource(resource)
@@ -34,23 +35,28 @@ func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) ->
 	if _keep_compressed:
 		var file := FileAccess.open_compressed(path, FileAccess.WRITE)
 		if not file:
-			return Error.ERR_FILE_CANT_WRITE
+			return Error.ERR_FILE_CANT_OPEN
 
-		file.store_var(resource_data)
+		if not file.store_var(resource_data):
+			return Error.ERR_FILE_CANT_WRITE
 
 	else:
 		var file := FileAccess.open(path, FileAccess.WRITE)
 		if not file:
-			return Error.ERR_FILE_CANT_WRITE
+			return Error.ERR_FILE_CANT_OPEN
 
 		var json_string := JSON.stringify(resource_data, "\t")
 		if not json_string:
 			return Error.ERR_PARSE_ERROR
 
-		file.store_string(json_string)
+		if not file.store_string(json_string):
+			return Error.ERR_FILE_CANT_WRITE
+
+	if flags & ResourceSaver.FLAG_CHANGE_PATH:
+		resource.take_over_path(path)
 
 	_dependency_cache = {}
-	return Error.OK
+	return OK
 
 
 func _get_property_default_value(resource: Resource, property: StringName):
@@ -74,7 +80,7 @@ func _serialize_resource(resource: Resource) -> Dictionary[String, Variant]:
 	for property in SafeIO.get_serializeable_properties(resource).map(func(p): return p["name"]):
 		var value = resource.get(property)
 		if value != _get_property_default_value(resource, property):
-			output[SafeIO.get_json_name(property)] = _serialize_value(value)
+			output[SafeIO.get_serialized_name(property)] = _serialize_value(value)
 
 	var custom_script: Script = resource.get_script()
 
@@ -87,8 +93,6 @@ func _serialize_resource(resource: Resource) -> Dictionary[String, Variant]:
 
 
 ## Converts [param value] into a Dictionary-compatible format.
-## If saving as [code].json5[/code], values will be stored in a compatible format,
-## via [method JSON.from_native].
 func _serialize_value(value):
 
 	if value is Object:
@@ -117,5 +121,8 @@ func _serialize_value(value):
 
 	elif value is Array:
 		return value.map(_serialize_value)
+	
+	if value == null or _keep_compressed:
+		return value
 
-	return value if _keep_compressed else JSON.from_native(value)
+	return JSON.from_native(value)

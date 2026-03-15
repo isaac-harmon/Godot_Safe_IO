@@ -32,4 +32,5 @@ rendering_device/driver.windows="d3d12"
 
 [safe_io]
 
+general/registered_resource_directories=PackedStringArray("res://addons/safe_io")
 general/registered_resource_files=PackedStringArray("uid://bgetirful6b64", "uid://yo7l3d8xe2wa")
