@@ -1,12 +1,12 @@
 @tool class_name SafeIOResourceRegister extends Resource
 
-@export_tool_button("Bake Resource Register", "Bake") var bake_list: Callable = _bake
-
 ## Appended list for runtime additions to the register.
 ## Same as [member _resource_register], it's recommended you don't manually modify this.
 ## Use [method add_dir] or [method add_file] to safely add to the register, 
 ## and [method remove_dir] or [method remove_file] to safely remove from it. 
 static var _runtime_register: Dictionary[String, StringName]
+
+@export_tool_button("Bake Resource Register", "Bake") var bake_list: Callable = _bake
 
 ## Full list of all resources instantiable by by [SafeIOLoader].
 ## It's recommended you don't manually modify this, instead rebaking with the button
@@ -67,8 +67,11 @@ func add_file(path: String) -> Error:
 	var resource := load(path)
 	path = ResourceUID.path_to_uid(path)
 	
+	var script := resource.get_script() as Script
+	var type := script.get_global_name() if script else resource.get_class()
+	
 	var appropriate_dict := _baked_register if Engine.is_editor_hint() else _runtime_register
-	appropriate_dict[path] = resource.get_global_name() if resource is Script else ""
+	appropriate_dict[path] = type
 	return OK
 
 
@@ -127,7 +130,11 @@ func remove_dir(path: String, include_subdirs := false) -> bool:
 ## Note: Because all files within [code]"res://"[/code] become read-only when exported,
 ## this can only remove entries added at runtime with [method add_dir] or [method add_file].
 func remove_file(path: String) -> bool:
-	return _runtime_register.erase(ResourceUID.path_to_uid(path))
+	
+	if _runtime_register.erase(ResourceUID.path_to_uid(path)):
+		return true
+	
+	return _runtime_register.erase(path)
 
 
 func _bake() -> Error:

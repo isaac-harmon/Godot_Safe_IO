@@ -9,7 +9,7 @@ var actual: TestResource
 func before_all() -> void:
 	var resource := TestResource.generate()
 	expected = resource.duplicate()
-	ResourceSaver.save(resource, path, ResourceSaver.FLAG_CHANGE_PATH)
+	ResourceSaver.save(resource, path)
 	actual = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
 
 

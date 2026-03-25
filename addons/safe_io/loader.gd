@@ -13,7 +13,48 @@ class LoadData:
 	## Dictionary for all loaded sub-resources / dependencies.
 	var dependency_cache: Dictionary[int, Resource]
 
+## Stack of data for all current loads. Current load is at the back of the array.
 var _load_stack: Array[LoadData]
+
+
+func _get_classes_used(path: String) -> PackedStringArray:
+	
+	var register := SafeIO.get_register()
+	if not register:
+		return []
+	
+	var get_type_name := func(type: String) -> String:
+		
+		if not type or ClassDB.class_exists(type):
+			return type
+		
+		return register.get_registered_resource_type(type)
+	
+	return _process_dependency_types(path, get_type_name)
+
+
+func _get_dependencies(path: String, add_types: bool) -> PackedStringArray:
+	
+	var register := SafeIO.get_register()
+	if not register:
+		return []
+	
+	var generate_string := func(type: String, add_types: bool) -> String:
+		
+		if not type or ClassDB.class_exists(type):
+			return ""
+		
+		var primary_path := ResourceUID.path_to_uid(type)
+		var secondary_path := ResourceUID.ensure_path(type)
+		var type_name := register.get_registered_resource_type(primary_path) if add_types else ""
+		
+		if secondary_path == primary_path:
+			secondary_path = ""
+		
+		var output_string := "%s::%s::%s" % [primary_path, type_name, secondary_path]
+		return output_string.rstrip(":")
+	
+	return _process_dependency_types(path, generate_string.bind(add_types))
 
 
 func _get_recognized_extensions() -> PackedStringArray:
@@ -22,20 +63,19 @@ func _get_recognized_extensions() -> PackedStringArray:
 
 func _get_resource_script_class(path: String) -> String:
 	
-	var data = _load_file(path, path.ends_with(SafeIO.BINARY_FILE_FORMAT))
-	if data is not Dictionary or SafeIO.TYPE_MARKER not in data:
-		return ""
-	
 	var register := SafeIO.get_register()
 	if not register:
 		return ""
 	
-	return register.get_registered_resource_type(str(data[SafeIO.TYPE_MARKER]))
+	return register.get_registered_resource_type(path)
 
 
 func _get_resource_type(path: String) -> String:
 	var type := _get_resource_script_class(path)
-	return type if ClassDB.class_exists(type) else "Resource"
+	if not type or ClassDB.class_exists(type):
+		return type
+	
+	return "Resource"
 
 
 func _handles_type(type: StringName) -> bool:
@@ -69,6 +109,11 @@ func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_m
 	
 	resource.take_over_path(path)
 	return resource
+
+
+# TODO: write this
+func _rename_dependencies(path: String, renames: Dictionary) -> Error:
+	return OK
 
 
 ## Attempts to load and parse data from the file at [param path].
@@ -114,7 +159,7 @@ func _load_dependency(id: int) -> Resource:
 
 
 ## Verifies the safety of the resource at [param path],
-## and if safe, will load and return the resource.
+## Returns the loaded resource on success or null on failure.
 func _load_external_resource(path: String) -> Resource:
 	
 	var register = SafeIO.get_register()
@@ -160,7 +205,6 @@ func _deserialize_resource(data: Dictionary) -> Resource:
 	return resource
 
 
-## Converts [param value] into Variant-compatible types.
 func _deserialize_value(value):
 	
 	if value is Dictionary:
@@ -187,14 +231,14 @@ func _deserialize_value(value):
 		if value.begins_with(SafeIO.ROOT_OBJECT_MARKER):
 			return _load_stack[-1].base_resource
 	
-	if value == null or _load_stack[-1].is_compressed:
+	elif value == null or _load_stack[-1].is_compressed:
 		return value
 	
 	return JSON.to_native(value)
 
 
 ## Instantiates a resource of the given type.
-## Expects the name of a built-in type, or the path to a custom script
+## Expects the name of a built-in type, or the path to a custom script.
 func _instantiate_resource(type: String) -> Resource:
 	
 	var register = SafeIO.get_register()
@@ -224,3 +268,33 @@ func _instantiate_resource(type: String) -> Resource:
 		_load_stack[-1].base_resource = resource
 	
 	return resource
+
+
+## Runs [param action] on each dependency in the resource at path.
+## Expects [param action] to take one [String] input and return a [String] when done.
+func _process_dependency_types(path: String, action: Callable) -> PackedStringArray:
+	
+	var data = _load_file(path, path.ends_with(SafeIO.BINARY_FILE_FORMAT))
+	if data is not Dictionary or SafeIO.TYPE_MARKER not in data:
+		return []
+	
+	var dependencies: PackedStringArray
+	var type_string: String = action.call(str(data[SafeIO.TYPE_MARKER]))
+	
+	if type_string:
+		dependencies.append(type_string)
+	
+	if not SafeIO.DEPENDENCIES_MARKER in data:
+		return dependencies
+	
+	for entry in data[SafeIO.DEPENDENCIES_MARKER]:
+		
+		var entry_value = data[SafeIO.DEPENDENCIES_MARKER][entry]
+		if entry_value is Dictionary:
+			entry_value = entry_value.get(SafeIO.TYPE_MARKER, "")
+		
+		type_string = action.call(str(entry_value))
+		if type_string:
+			dependencies.append(type_string)
+	
+	return dependencies
