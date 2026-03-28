@@ -36,22 +36,22 @@ func _save_data(resource_data: Dictionary, path: String) -> Error:
 	if _keep_compressed:
 		var file := FileAccess.open_compressed(path, FileAccess.WRITE)
 		if not file:
-			return Error.ERR_FILE_CANT_OPEN
+			return FileAccess.get_open_error()
 
 		if not file.store_var(resource_data):
-			return Error.ERR_FILE_CANT_WRITE
+			return file.get_error()
 
 	else:
 		var file := FileAccess.open(path, FileAccess.WRITE)
 		if not file:
-			return Error.ERR_FILE_CANT_OPEN
+			return FileAccess.get_open_error()
 
 		var json_string := JSON.stringify(resource_data, "\t")
 		if not json_string:
-			return Error.ERR_PARSE_ERROR
+			return ERR_PARSE_ERROR
 
 		if not file.store_string(json_string):
-			return Error.ERR_FILE_CANT_WRITE
+			return file.get_error()
 
 	return OK
 

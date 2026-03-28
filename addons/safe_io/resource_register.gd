@@ -174,11 +174,11 @@ func _bake() -> Error:
 		if not error:
 			break
 		
-		if attempt < 2:
-			push_warning("[SafeIO]: An error occured when writing to path \"%s\". Retrying..." % resource_path)
-		else:
+		if attempt >= 2:
 			push_error("[SafeIO]: Aborted, cannot save! Error code %d: (%s)" % [error, error_string(error)])
 			return ERR_FILE_CANT_WRITE
+		
+		push_warning("[SafeIO]: An error occured when writing to path \"%s\". Retrying..." % resource_path)
 	
 	print("\n[SafeIO]: Succesfully wrote result to \"%s\". Bake complete!" % resource_path)
 	notify_property_list_changed()

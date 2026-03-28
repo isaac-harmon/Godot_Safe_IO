@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="SafeIO"
+config/name="SafeResourceIO"
 run/main_scene="uid://b8mgm3yfols8v"
 config/features=PackedStringArray("4.6", "Forward Plus")
 
