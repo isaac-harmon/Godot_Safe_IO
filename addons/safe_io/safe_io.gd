@@ -78,7 +78,6 @@ static func _is_valid_property(property: Dictionary) -> bool:
 func _enable_plugin() -> void:
 
 	ProjectSettings.set_setting(REGISTERED_DIRS, PackedStringArray())
-	ProjectSettings.set_initial_value(REGISTERED_DIRS, PackedStringArray())
 	ProjectSettings.set_as_basic(REGISTERED_DIRS, true)
 	ProjectSettings.add_property_info({
 		"name": REGISTERED_DIRS,
@@ -90,7 +89,6 @@ func _enable_plugin() -> void:
 	})
 
 	ProjectSettings.set_setting(REGISTERED_FILES, PackedStringArray())
-	ProjectSettings.set_initial_value(REGISTERED_FILES, PackedStringArray())
 	ProjectSettings.set_as_basic(REGISTERED_FILES, true)
 	ProjectSettings.add_property_info({
 		"name": REGISTERED_FILES,
@@ -102,7 +100,6 @@ func _enable_plugin() -> void:
 	})
 
 	ProjectSettings.set_setting(CUSTOM_FILE_PATH, "")
-	ProjectSettings.set_initial_value(CUSTOM_FILE_PATH, "")
 	ProjectSettings.add_property_info({
 		"name": CUSTOM_FILE_PATH,
 		"type": TYPE_STRING,
@@ -127,5 +124,5 @@ func _build() -> bool:
 	if not register:
 		return false
 
-	rebake_required = register._bake() != OK
+	rebake_required = register._bake() != Error.OK
 	return not rebake_required

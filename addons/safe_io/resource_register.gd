@@ -35,7 +35,7 @@ func _get_property_list() -> Array[Dictionary]:
 func add_dir(path: String, include_subdirs := false) -> Error:
 	
 	if not DirAccess.dir_exists_absolute(path):
-		return ERR_FILE_NOT_FOUND
+		return Error.ERR_FILE_NOT_FOUND
 	
 	for file in ResourceLoader.list_directory(path):
 		
@@ -49,7 +49,7 @@ func add_dir(path: String, include_subdirs := false) -> Error:
 		elif include_subdirs:
 			add_dir(full_path, true)
 	
-	return OK
+	return Error.OK
 
 
 ## Appends the given resource at [param path] to the resource register.[br][br]
@@ -59,10 +59,10 @@ func add_dir(path: String, include_subdirs := false) -> Error:
 func add_file(path: String) -> Error:
 	
 	if not ResourceLoader.exists(path):
-		return ERR_FILE_NOT_FOUND
+		return Error.ERR_FILE_NOT_FOUND
 	
 	if is_resource_registered(path):
-		return ERR_DUPLICATE_SYMBOL
+		return Error.ERR_DUPLICATE_SYMBOL
 	
 	var resource := load(path)
 	path = ResourceUID.path_to_uid(path)
@@ -72,7 +72,7 @@ func add_file(path: String) -> Error:
 	
 	var appropriate_dict := _baked_register if Engine.is_editor_hint() else _runtime_register
 	appropriate_dict[path] = type
-	return OK
+	return Error.OK
 
 
 ## Returns the registered classname of resource at [param path] if registered,
@@ -140,7 +140,7 @@ func remove_file(path: String) -> bool:
 func _bake() -> Error:
 	
 	if not Engine.is_editor_hint():
-		return ERR_UNAUTHORIZED
+		return Error.ERR_UNAUTHORIZED
 	
 	print("[SafeIO]: Baking runtime resource register.")
 	
@@ -153,10 +153,10 @@ func _bake() -> Error:
 		
 		var error := add_dir(directory + "/")
 		match error:
-			OK:
+			Error.OK:
 				pass
 			
-			ERR_FILE_NOT_FOUND:
+			Error.ERR_FILE_NOT_FOUND:
 				push_warning("[SafeIO]: Directory \"%s\" not found!" % directory)
 			
 			_:
@@ -176,26 +176,26 @@ func _bake() -> Error:
 		
 		if attempt >= 2:
 			push_error("[SafeIO]: Aborted, cannot save! Error code %d: (%s)" % [error, error_string(error)])
-			return ERR_FILE_CANT_WRITE
+			return Error.ERR_FILE_CANT_WRITE
 		
 		push_warning("[SafeIO]: An error occured when writing to path \"%s\". Retrying..." % resource_path)
 	
 	print("\n[SafeIO]: Succesfully wrote result to \"%s\". Bake complete!" % resource_path)
 	notify_property_list_changed()
-	return OK
+	return Error.OK
 
 
 func _print_file_error(error: Error, path: String) -> void:
 	
 	var true_path := ResourceUID.ensure_path(path)
 	match error:
-		OK:
+		Error.OK:
 			print_rich("[color=web_gray]\t - Registered \"%s\"" % [true_path])
 		
-		ERR_FILE_NOT_FOUND:
+		Error.ERR_FILE_NOT_FOUND:
 			push_warning("[SafeIO]: File \"%s\" not found!" % true_path)
 		
-		ERR_DUPLICATE_SYMBOL:
+		Error.ERR_DUPLICATE_SYMBOL:
 			push_warning("[SafeIO]: Duplicate file \"%s\" in register!" % true_path)
 		
 		_:

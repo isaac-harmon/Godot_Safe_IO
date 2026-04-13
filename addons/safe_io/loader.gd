@@ -1,20 +1,18 @@
 class_name SafeIOLoader extends ResourceFormatLoader
 
 class LoadData:
-
 	var base_resource: Resource
-	var is_compressed: bool
 	var cache_mode: ResourceFormatLoader.CacheMode
-
-	## Dictionary for all unloaded resource data.
-	## Sub-resources will have a dictionary of data, and external resources will have just the path.
-	var raw_dependency_data: Dictionary[int, Variant]
-
-	## Dictionary for all loaded sub-resources / dependencies.
-	var dependency_cache: Dictionary[int, Resource]
 
 ## Stack of data for all current loads. Current load is at the back of the array.
 var _load_stack: Array[LoadData]
+
+## Dictionary for all unloaded resource data.
+## Sub-resources will have a dictionary of data, and external resources will have just the path.
+var _raw_dependency_data: Dictionary[int, Variant]
+
+## Dictionary for all loaded sub-resources / dependencies.
+var _dependency_cache: Dictionary[int, Resource]
 
 
 func _get_classes_used(path: String) -> PackedStringArray:
@@ -85,28 +83,28 @@ func _handles_type(_type: StringName) -> bool:
 func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_mode: CacheMode):
 
 	path = ResourceUID.ensure_path(path)
-
-	var load_data := LoadData.new()
-	load_data.is_compressed = path.ends_with(SafeIO.BINARY_FILE_FORMAT)
-	load_data.cache_mode = cache_mode
-
-	var result = _load_file(path, load_data.is_compressed)
+	var result = _load_file(path)
 	if result is Error:
 		return result
 
+	var load_data := LoadData.new()
+	load_data.cache_mode = cache_mode
 	_load_stack.push_back(load_data)
 
 	if SafeIO.DEPENDENCIES_MARKER in result:
 		var dependencies := result[SafeIO.DEPENDENCIES_MARKER] as Dictionary
 		for entry in dependencies:
-			load_data.raw_dependency_data[int(_deserialize_value(entry))] = dependencies[entry]
+			_raw_dependency_data[int(entry)] = dependencies[entry]
 
 	var resource := _deserialize_resource(result)
 
 	_load_stack.pop_back()
+	if _load_stack.is_empty():
+		_raw_dependency_data.clear()
+		_dependency_cache.clear()
 
 	if resource == null:
-		return ERR_FILE_CORRUPT
+		return Error.ERR_FILE_CORRUPT
 
 	resource.take_over_path(path)
 	return resource
@@ -114,7 +112,7 @@ func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_m
 
 func _rename_dependencies(path: String, renames: Dictionary) -> Error:
 
-	var data = _load_file(path, path.ends_with(SafeIO.BINARY_FILE_FORMAT))
+	var data = _load_file(path)
 
 	if data is Error:
 		return data
@@ -123,7 +121,7 @@ func _rename_dependencies(path: String, renames: Dictionary) -> Error:
 		data[SafeIO.TYPE_MARKER] = renames[data[SafeIO.TYPE_MARKER]]
 
 	if not SafeIO.DEPENDENCIES_MARKER in data:
-		return OK
+		return Error.OK
 
 	var dependencies := data[SafeIO.DEPENDENCIES_MARKER] as Dictionary
 	for entry in dependencies:
@@ -136,15 +134,15 @@ func _rename_dependencies(path: String, renames: Dictionary) -> Error:
 		elif entry in renames:
 			dependencies[entry] = renames[entry]
 
-	return OK
+	return Error.OK
 
 
 ## Attempts to load and parse data from the file at [param path].
 ## Returns a [String]-keyed dictionary on success, or an [enum Error] on failure.
-func _load_file(path: String, is_compressed: bool):
+func _load_file(path: String):
 
 	var data
-	if is_compressed:
+	if path.ends_with(SafeIO.BINARY_FILE_FORMAT):
 		var file := FileAccess.open_compressed(path, FileAccess.READ)
 		if not file:
 			return FileAccess.get_open_error()
@@ -158,30 +156,29 @@ func _load_file(path: String, is_compressed: bool):
 
 		var json := JSON.new()
 		if json.parse(file.get_as_text()):
-			return ERR_PARSE_ERROR
+			return Error.ERR_PARSE_ERROR
 
 		data = json.data
 
-	return data if data is Dictionary else ERR_INVALID_DATA
+	return data if data is Dictionary else Error.ERR_INVALID_DATA
 
 
 func _load_dependency(id: int) -> Resource:
 
-	var load_data := _load_stack[-1]
-	if id in load_data.dependency_cache:
-		return load_data.dependency_cache[id]
+	if id in _dependency_cache:
+		return _dependency_cache[id]
 
-	var data = load_data.raw_dependency_data.get(id)
+	var data = _raw_dependency_data.get(id)
 	if data is Dictionary:
-		load_data.dependency_cache[id] = _deserialize_resource(data)
+		_dependency_cache[id] = _deserialize_resource(data)
 
 	elif data is String:
-		load_data.dependency_cache[id] = _load_external_resource(data)
+		_dependency_cache[id] = _load_external_resource(data)
 
 	else:
 		return null
 
-	return load_data.dependency_cache[id]
+	return _dependency_cache[id]
 
 
 ## Verifies the safety of the resource at [param path],
@@ -233,34 +230,34 @@ func _deserialize_resource(data: Dictionary) -> Resource:
 
 func _deserialize_value(value):
 
-	if value is Dictionary:
+	match typeof(value):
 
-		if "args" in value and "type" in value:
+		TYPE_STRING:
+			if value == SafeIO.NULL_MARKER:
+				return null
+
+			if value.begins_with(SafeIO.OBJECT_MARKER):
+				return _load_dependency(value.trim_prefix(SafeIO.OBJECT_MARKER).to_int())
+
+			if value.begins_with(SafeIO.ROOT_OBJECT_MARKER):
+				return _load_stack[-1].base_resource
+
 			return JSON.to_native(value)
 
-		var dict: Dictionary
-		for key in value:
-			dict[_deserialize_value(key)] = _deserialize_value(value[key])
-		return dict
+		TYPE_ARRAY:
+			return value.map(_deserialize_value)
 
-	if value is Array:
-		return value.map(_deserialize_value)
+		TYPE_DICTIONARY:
+			if "args" in value and "type" in value:
+				return JSON.to_native(value)
 
-	if value is String:
+			var dict: Dictionary
+			for key in value:
+				dict[_deserialize_value(key)] = _deserialize_value(value[key])
+			return dict
 
-		if value == SafeIO.NULL_MARKER:
-			return null
-
-		if value.begins_with(SafeIO.OBJECT_MARKER):
-			return _load_dependency(value.trim_prefix(SafeIO.OBJECT_MARKER).to_int())
-
-		if value.begins_with(SafeIO.ROOT_OBJECT_MARKER):
-			return _load_stack[-1].base_resource
-
-	elif value == null or _load_stack[-1].is_compressed:
-		return value
-
-	return JSON.to_native(value)
+		_:
+			return value
 
 
 ## Instantiates a resource of the given type.
@@ -301,7 +298,7 @@ func _instantiate_resource(type: String) -> Resource:
 ## Expects [param action] to take one [String] input and return a [String].
 func _process_dependency_types(path: String, action: Callable) -> PackedStringArray:
 
-	var data = _load_file(path, path.ends_with(SafeIO.BINARY_FILE_FORMAT))
+	var data = _load_file(path)
 	if data is Error or SafeIO.TYPE_MARKER not in data:
 		return []
 

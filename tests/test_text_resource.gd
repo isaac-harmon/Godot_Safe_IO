@@ -129,8 +129,10 @@ func test_plane_stored_correctly() -> void:
 	assert_eq(actual.plane, expected.plane)
 
 
+# Modified since json converts ints to floats
 func test_array_stored_correctly() -> void:
-	assert_eq(actual.array, expected.array)
+	for index in actual.array.size():
+		assert_true(actual.array[index] == expected.array[index])
 
 
 func test_typed_array_stored_correctly() -> void:
@@ -181,8 +183,10 @@ func test_packed_color_array_stored_correctly() -> void:
 	assert_eq_deep(actual.packed_color_array, expected.packed_color_array)
 
 
+# Modified since json converts ints to floats
 func test_dictionary_stored_correctly() -> void:
-	assert_eq_deep(actual.dictionary, expected.dictionary)
+	for entry in actual.dictionary:
+		assert_true(actual.dictionary[entry] == expected.dictionary[entry])
 
 
 func test_typed_dictionary_stored_correctly() -> void:

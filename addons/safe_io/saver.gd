@@ -14,11 +14,11 @@ func _recognize(resource: Resource) -> bool:
 
 
 func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) -> Error:
-	
+
 	_keep_compressed = path.ends_with(SafeIO.BINARY_FILE_FORMAT)
 	_save_flags = flags
 	_base_resource = resource
-	
+
 	var resource_data := _serialize(resource)
 	var error := _save_data(resource_data, path)
 
@@ -28,7 +28,7 @@ func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) ->
 	if flags & ResourceSaver.FLAG_CHANGE_PATH:
 		resource.take_over_path(path)
 
-	return OK
+	return Error.OK
 
 
 func _save_data(resource_data: Dictionary, path: String) -> Error:
@@ -48,12 +48,12 @@ func _save_data(resource_data: Dictionary, path: String) -> Error:
 
 		var json_string := JSON.stringify(resource_data, "\t")
 		if not json_string:
-			return ERR_PARSE_ERROR
+			return Error.ERR_PARSE_ERROR
 
 		if not file.store_string(json_string):
 			return file.get_error()
 
-	return OK
+	return Error.OK
 
 
 func _get_property_default_value(resource: Resource, property: StringName):
@@ -109,39 +109,51 @@ func _serialize_resource(resource: Resource, dependency_cache: Dictionary[Resour
 ## Converts [param value] into a Dictionary-compatible format.
 func _serialize_value(value, dependency_cache: Dictionary[Resource, Variant]):
 
-	if value is Object:
+	match typeof(value):
 
-		if value is not Resource:
-			return null
+		TYPE_NIL, TYPE_INT, TYPE_FLOAT:
+			return value
 
-		if value == _base_resource:
-			return SafeIO.ROOT_OBJECT_MARKER
+		TYPE_STRING:
+			return JSON.from_native(value)
 
-		if value.resource_path and not _save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES:
-			dependency_cache[value] = ResourceUID.path_to_uid(value.resource_path)
+		TYPE_ARRAY:
+			return value.map(_serialize_value.bind(dependency_cache))
 
-		elif value not in dependency_cache:
-			dependency_cache[value] = true
-			dependency_cache[value] = _serialize_resource(value, dependency_cache)
+		TYPE_DICTIONARY:
+			var fixed := {}
+			for key in value:
 
-		return SafeIO.OBJECT_MARKER + str(value.get_instance_id())
+				var new_key = _serialize_value(key, dependency_cache)
+				if not _keep_compressed:
 
-	if value is Dictionary:
+					if new_key == null:
+						new_key = SafeIO.NULL_MARKER
 
-		var fixed := {}
-		for key in value:
-			var new_key = SafeIO.NULL_MARKER if key == null else _serialize_value(key, dependency_cache)
-			fixed[new_key] = _serialize_value(value[key], dependency_cache)
+					elif new_key is not String:
+						new_key = JSON.from_native(new_key)
+						if new_key is not String:
+							continue
 
-		return fixed
+				fixed[new_key] = _serialize_value(value[key], dependency_cache)
 
-	if value is Array:
-		return value.map(_serialize_value.bind(dependency_cache))
+			return fixed
 
-	if value is String:
-		return JSON.from_native(value)
+		TYPE_OBJECT:
+			if value is not Resource:
+				return null
 
-	if value == null or _keep_compressed:
-		return value
+			if value == _base_resource:
+				return SafeIO.ROOT_OBJECT_MARKER
 
-	return JSON.from_native(value)
+			if value.resource_path and not _save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES:
+				dependency_cache[value] = ResourceUID.path_to_uid(value.resource_path)
+
+			elif value not in dependency_cache:
+				dependency_cache[value] = true
+				dependency_cache[value] = _serialize_resource(value, dependency_cache)
+
+			return SafeIO.OBJECT_MARKER + str(value.get_instance_id())
+
+		_:
+			return value if _keep_compressed else JSON.from_native(value)
