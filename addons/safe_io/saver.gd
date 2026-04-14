@@ -1,8 +1,10 @@
 class_name SafeIOSaver extends ResourceFormatSaver
 
-var _keep_compressed: bool
-var _save_flags: ResourceSaver.SaverFlags
-var _base_resource: Resource
+class SaveMetadata:
+	var keep_compressed: bool
+	var save_flags: ResourceSaver.SaverFlags
+	var base_resource: Resource
+	var dependency_cache: Dictionary[Resource, Variant]
 
 
 func _get_recognized_extensions(_resource: Resource) -> PackedStringArray:
@@ -15,13 +17,13 @@ func _recognize(resource: Resource) -> bool:
 
 func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) -> Error:
 
-	_keep_compressed = path.ends_with(SafeIO.BINARY_FILE_FORMAT)
-	_save_flags = flags
-	_base_resource = resource
+	var metadata := SaveMetadata.new()
+	metadata.keep_compressed = path.ends_with(SafeIO.BINARY_FILE_FORMAT)
+	metadata.save_flags = flags
+	metadata.base_resource = resource
 
-	var resource_data := _serialize(resource)
-	var error := _save_data(resource_data, path)
-
+	var resource_data := _serialize(resource, metadata)
+	var error := _save_data(resource_data, path, metadata.keep_compressed)
 	if error:
 		return error
 
@@ -31,9 +33,9 @@ func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) ->
 	return Error.OK
 
 
-func _save_data(resource_data: Dictionary, path: String) -> Error:
+func _save_data(resource_data: Dictionary, path: String, compress: bool) -> Error:
 
-	if _keep_compressed:
+	if compress:
 		var file := FileAccess.open_compressed(path, FileAccess.WRITE)
 		if not file:
 			return FileAccess.get_open_error()
@@ -70,31 +72,28 @@ func _get_property_default_value(resource: Resource, property: StringName):
 	return ClassDB.class_get_property_default_value(resource.get_class(), property)
 
 
-func _serialize(resource: Resource) -> Dictionary[String, Variant]:
+func _serialize(resource: Resource, metadata: SaveMetadata) -> Dictionary[String, Variant]:
 
-	var dependency_cache: Dictionary[Resource, Variant]
-	var resource_data := _serialize_resource(resource, dependency_cache)
-
-	if not dependency_cache:
+	var resource_data := _serialize_resource(resource, metadata)
+	if not metadata.dependency_cache:
 		return resource_data
 
 	var dependencies: Dictionary
-	for dependency in dependency_cache:
-		var index = _serialize_value(dependency.get_instance_id(), dependency_cache)
-		dependencies[index] = dependency_cache[dependency]
+	for dependency in metadata.dependency_cache:
+		dependencies[dependency.get_instance_id()] = metadata.dependency_cache[dependency]
 
 	resource_data[SafeIO.DEPENDENCIES_MARKER] = dependencies
 	return resource_data
 
 
 ## Converts [param resource] into a string-keyed [Dictionary].
-func _serialize_resource(resource: Resource, dependency_cache: Dictionary[Resource, Variant]) -> Dictionary[String, Variant]:
+func _serialize_resource(resource: Resource, metadata: SaveMetadata) -> Dictionary[String, Variant]:
 
 	var output: Dictionary[String, Variant]
 	for property in SafeIO.get_serializeable_properties(resource).map(func(p): return p["name"]):
 		var value = resource.get(property)
 		if value != _get_property_default_value(resource, property):
-			output[SafeIO.get_serialized_name(property)] = _serialize_value(value, dependency_cache)
+			output[SafeIO.get_serialized_name(property)] = _serialize_value(value, metadata)
 
 	var custom_script: Script = resource.get_script()
 
@@ -107,7 +106,7 @@ func _serialize_resource(resource: Resource, dependency_cache: Dictionary[Resour
 
 
 ## Converts [param value] into a Dictionary-compatible format.
-func _serialize_value(value, dependency_cache: Dictionary[Resource, Variant]):
+func _serialize_value(value, metadata: SaveMetadata):
 
 	match typeof(value):
 
@@ -118,14 +117,14 @@ func _serialize_value(value, dependency_cache: Dictionary[Resource, Variant]):
 			return JSON.from_native(value)
 
 		TYPE_ARRAY:
-			return value.map(_serialize_value.bind(dependency_cache))
+			return value.map(_serialize_value.bind(metadata))
 
 		TYPE_DICTIONARY:
 			var fixed := {}
 			for key in value:
 
-				var new_key = _serialize_value(key, dependency_cache)
-				if not _keep_compressed:
+				var new_key = _serialize_value(key, metadata)
+				if not metadata.keep_compressed:
 
 					if new_key == null:
 						new_key = SafeIO.NULL_MARKER
@@ -135,7 +134,7 @@ func _serialize_value(value, dependency_cache: Dictionary[Resource, Variant]):
 						if new_key is not String:
 							continue
 
-				fixed[new_key] = _serialize_value(value[key], dependency_cache)
+				fixed[new_key] = _serialize_value(value[key], metadata)
 
 			return fixed
 
@@ -143,17 +142,17 @@ func _serialize_value(value, dependency_cache: Dictionary[Resource, Variant]):
 			if value is not Resource:
 				return null
 
-			if value == _base_resource:
+			if value == metadata.base_resource:
 				return SafeIO.ROOT_OBJECT_MARKER
 
-			if value.resource_path and not _save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES:
-				dependency_cache[value] = ResourceUID.path_to_uid(value.resource_path)
+			if value.resource_path and not metadata.save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES:
+				metadata.dependency_cache[value] = ResourceUID.path_to_uid(value.resource_path)
 
-			elif value not in dependency_cache:
-				dependency_cache[value] = true
-				dependency_cache[value] = _serialize_resource(value, dependency_cache)
+			elif value not in metadata.dependency_cache:
+				metadata.dependency_cache[value] = true
+				metadata.dependency_cache[value] = _serialize_resource(value, metadata)
 
 			return SafeIO.OBJECT_MARKER + str(value.get_instance_id())
 
 		_:
-			return value if _keep_compressed else JSON.from_native(value)
+			return value if metadata.keep_compressed else JSON.from_native(value)

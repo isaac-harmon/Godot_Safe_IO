@@ -1,18 +1,42 @@
 class_name SafeIOLoader extends ResourceFormatLoader
 
-class LoadData:
+
+class LoadMetadata:
+
 	var base_resource: Resource
-	var cache_mode: ResourceFormatLoader.CacheMode
+	var cache_mode: ResourceLoader.CacheMode
+	var raw_dependency_data: Dictionary[int, Variant]
+	var dependency_cache: Dictionary[int, Resource]
 
-## Stack of data for all current loads. Current load is at the back of the array.
-var _load_stack: Array[LoadData]
 
-## Dictionary for all unloaded resource data.
-## Sub-resources will have a dictionary of data, and external resources will have just the path.
-var _raw_dependency_data: Dictionary[int, Variant]
+	func _init(dependency_data: Dictionary, cache_mode: ResourceFormatLoader.CacheMode) -> void:
 
-## Dictionary for all loaded sub-resources / dependencies.
-var _dependency_cache: Dictionary[int, Resource]
+		match cache_mode:
+
+			ResourceFormatLoader.CACHE_MODE_IGNORE_DEEP:
+				self.cache_mode = ResourceLoader.CACHE_MODE_IGNORE_DEEP
+
+			ResourceFormatLoader.CACHE_MODE_REPLACE_DEEP:
+				self.cache_mode = ResourceLoader.CACHE_MODE_REPLACE_DEEP
+
+			_:
+				self.cache_mode = ResourceLoader.CACHE_MODE_REUSE
+
+		for entry in dependency_data:
+
+			var object_id: int
+			match typeof(entry):
+
+				TYPE_INT:
+					object_id = entry
+
+				TYPE_STRING:
+					object_id = entry.to_int()
+
+				_:
+					continue
+
+			raw_dependency_data[object_id] = dependency_data[entry]
 
 
 func _get_classes_used(path: String) -> PackedStringArray:
@@ -83,26 +107,13 @@ func _handles_type(_type: StringName) -> bool:
 func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_mode: CacheMode):
 
 	path = ResourceUID.ensure_path(path)
-	var result = _load_file(path)
-	if result is Error:
-		return result
+	var load_result = _load_file(path)
+	if load_result is Error:
+		return load_result
 
-	var load_data := LoadData.new()
-	load_data.cache_mode = cache_mode
-	_load_stack.push_back(load_data)
-
-	if SafeIO.DEPENDENCIES_MARKER in result:
-		var dependencies := result[SafeIO.DEPENDENCIES_MARKER] as Dictionary
-		for entry in dependencies:
-			_raw_dependency_data[int(entry)] = dependencies[entry]
-
-	var resource := _deserialize_resource(result)
-
-	_load_stack.pop_back()
-	if _load_stack.is_empty():
-		_raw_dependency_data.clear()
-		_dependency_cache.clear()
-
+	var dependency_data = load_result.get(SafeIO.DEPENDENCIES_MARKER)
+	var metadata := LoadMetadata.new(dependency_data if dependency_data is Dictionary else {}, cache_mode)
+	var resource := _deserialize_resource(load_result, metadata)
 	if resource == null:
 		return Error.ERR_FILE_CORRUPT
 
@@ -113,7 +124,6 @@ func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_m
 func _rename_dependencies(path: String, renames: Dictionary) -> Error:
 
 	var data = _load_file(path)
-
 	if data is Error:
 		return data
 
@@ -135,6 +145,29 @@ func _rename_dependencies(path: String, renames: Dictionary) -> Error:
 			dependencies[entry] = renames[entry]
 
 	return Error.OK
+
+
+func _load_dependency(object_id: int, metadata: LoadMetadata) -> Resource:
+
+	if object_id in metadata.dependency_cache:
+		return metadata.dependency_cache[object_id]
+
+	var object_data = metadata.raw_dependency_data.get(object_id)
+	var result: Resource
+	
+	match typeof(object_data):
+
+		TYPE_DICTIONARY:
+			result = _deserialize_resource(object_data, metadata)
+
+		TYPE_STRING:
+			result = _load_external_resource(object_data, metadata.cache_mode)
+
+		_:
+			return null
+
+	metadata.dependency_cache[object_id] = result
+	return result
 
 
 ## Attempts to load and parse data from the file at [param path].
@@ -163,27 +196,9 @@ func _load_file(path: String):
 	return data if data is Dictionary else Error.ERR_INVALID_DATA
 
 
-func _load_dependency(id: int) -> Resource:
-
-	if id in _dependency_cache:
-		return _dependency_cache[id]
-
-	var data = _raw_dependency_data.get(id)
-	if data is Dictionary:
-		_dependency_cache[id] = _deserialize_resource(data)
-
-	elif data is String:
-		_dependency_cache[id] = _load_external_resource(data)
-
-	else:
-		return null
-
-	return _dependency_cache[id]
-
-
 ## Verifies the safety of the resource at [param path],
 ## Returns the loaded resource on success or null on failure.
-func _load_external_resource(path: String) -> Resource:
+func _load_external_resource(path: String, cache_mode: ResourceLoader.CacheMode) -> Resource:
 
 	var register = SafeIO.get_register()
 	if not register:
@@ -192,31 +207,28 @@ func _load_external_resource(path: String) -> Resource:
 	if not register.is_resource_safe(path):
 		return null
 
-	var cache_mode: ResourceLoader.CacheMode
-	match _load_stack[-1].cache_mode:
-		CACHE_MODE_IGNORE_DEEP: cache_mode = ResourceLoader.CACHE_MODE_IGNORE_DEEP
-		CACHE_MODE_REPLACE_DEEP: cache_mode = ResourceLoader.CACHE_MODE_REPLACE_DEEP
-		_: cache_mode = ResourceLoader.CACHE_MODE_REUSE
-
 	return ResourceLoader.load(path, "", cache_mode)
 
 
 ## Converts any valid [Dictionary] into its corresponding type.
 ## Returns the [Resource] on success or a null value on failure.
-func _deserialize_resource(data: Dictionary) -> Resource:
+func _deserialize_resource(object_data: Dictionary, metadata: LoadMetadata) -> Resource:
 
-	var type := str(data.get(SafeIO.TYPE_MARKER))
+	var type := str(object_data.get(SafeIO.TYPE_MARKER))
 	var resource := _instantiate_resource(type)
 	if resource == null:
 		return null
 
+	if metadata.base_resource == null:
+		metadata.base_resource = resource
+
 	for property in SafeIO.get_serializeable_properties(resource):
 
 		var json_name := SafeIO.get_serialized_name(property["name"])
-		if not json_name in data:
+		if not json_name in object_data:
 			continue
 
-		var value = _deserialize_value(data[json_name])
+		var value = _deserialize_value(object_data[json_name], metadata)
 
 		if property["type"] == TYPE_ARRAY or property["type"] == TYPE_DICTIONARY:
 			var current = resource.get(property["name"])
@@ -228,7 +240,7 @@ func _deserialize_resource(data: Dictionary) -> Resource:
 	return resource
 
 
-func _deserialize_value(value):
+func _deserialize_value(value, metadata: LoadMetadata):
 
 	match typeof(value):
 
@@ -237,15 +249,15 @@ func _deserialize_value(value):
 				return null
 
 			if value.begins_with(SafeIO.OBJECT_MARKER):
-				return _load_dependency(value.trim_prefix(SafeIO.OBJECT_MARKER).to_int())
+				return _load_dependency(value.trim_prefix(SafeIO.OBJECT_MARKER).to_int(), metadata)
 
 			if value.begins_with(SafeIO.ROOT_OBJECT_MARKER):
-				return _load_stack[-1].base_resource
+				return metadata.base_resource
 
 			return JSON.to_native(value)
 
 		TYPE_ARRAY:
-			return value.map(_deserialize_value)
+			return value.map(_deserialize_value.bind(metadata))
 
 		TYPE_DICTIONARY:
 			if "args" in value and "type" in value:
@@ -253,7 +265,7 @@ func _deserialize_value(value):
 
 			var dict: Dictionary
 			for key in value:
-				dict[_deserialize_value(key)] = _deserialize_value(value[key])
+				dict[_deserialize_value(key, metadata)] = _deserialize_value(value[key], metadata)
 			return dict
 
 		_:
@@ -287,9 +299,6 @@ func _instantiate_resource(type: String) -> Resource:
 		return null
 
 	var resource: Resource = script.new()
-	if _load_stack[-1].base_resource == null:
-		_load_stack[-1].base_resource = resource
-
 	return resource
 
 
