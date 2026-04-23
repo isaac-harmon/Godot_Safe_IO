@@ -154,7 +154,7 @@ func _load_dependency(object_id: int, metadata: LoadMetadata) -> Resource:
 
 	var object_data = metadata.raw_dependency_data.get(object_id)
 	var result: Resource
-	
+
 	match typeof(object_data):
 
 		TYPE_DICTIONARY:
@@ -210,6 +210,28 @@ func _load_external_resource(path: String, cache_mode: ResourceLoader.CacheMode)
 	return ResourceLoader.load(path, "", cache_mode)
 
 
+func _deserialize_string(string: String, metadata: LoadMetadata):
+
+	if string.begins_with(SafeIO.OBJECT_MARKER):
+		return _load_dependency(string.trim_prefix(SafeIO.OBJECT_MARKER).to_int(), metadata)
+
+	match string:
+		"true": return true
+		"false": return false
+		SafeIO.ROOT_OBJECT_MARKER: return metadata.base_resource
+		SafeIO.NULL_MARKER: return null
+
+	match string.get_slice(":", 0):
+		"s", "sn", "np", "i", "f":
+			return JSON.to_native(string)
+
+	match string.get_slice("(", 0):
+		"object", "resource", "subresource", "extresource":
+			return string
+
+	return str_to_var(string)
+
+
 ## Converts any valid [Dictionary] into its corresponding type.
 ## Returns the [Resource] on success or a null value on failure.
 func _deserialize_resource(object_data: Dictionary, metadata: LoadMetadata) -> Resource:
@@ -245,24 +267,12 @@ func _deserialize_value(value, metadata: LoadMetadata):
 	match typeof(value):
 
 		TYPE_STRING:
-			if value == SafeIO.NULL_MARKER:
-				return null
-
-			if value.begins_with(SafeIO.OBJECT_MARKER):
-				return _load_dependency(value.trim_prefix(SafeIO.OBJECT_MARKER).to_int(), metadata)
-
-			if value.begins_with(SafeIO.ROOT_OBJECT_MARKER):
-				return metadata.base_resource
-
-			return JSON.to_native(value)
+			return _deserialize_string(value, metadata)
 
 		TYPE_ARRAY:
 			return value.map(_deserialize_value.bind(metadata))
 
 		TYPE_DICTIONARY:
-			if "args" in value and "type" in value:
-				return JSON.to_native(value)
-
 			var dict: Dictionary
 			for key in value:
 				dict[_deserialize_value(key, metadata)] = _deserialize_value(value[key], metadata)

@@ -111,7 +111,7 @@ static func generate() -> TestResource:
 
 	resource.plane = Plane.PLANE_XY
 
-	resource.array = [1, 2.0, "3"]
+	resource.array = [true, 1, 2.0, "3"]
 	resource.typed_array.assign([1, 2, 3])
 	resource.object_array.assign([
 		trusted_resource,
@@ -133,6 +133,8 @@ static func generate() -> TestResource:
 	resource.packed_color_array = [Color.BEIGE]
 
 	resource.dictionary.assign({
+		true: true,
+		false: false,
 		1: 1,
 		2.0: 2.0,
 		"3": "3",

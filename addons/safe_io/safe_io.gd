@@ -5,7 +5,7 @@ const BINARY_FILE_FORMAT = "bin"
 
 const TYPE_MARKER = "<type>"
 const DEPENDENCIES_MARKER = "<dependencies>"
-const OBJECT_MARKER = "<obj>"
+const OBJECT_MARKER = "obj:"
 const ROOT_OBJECT_MARKER = "<rootobj>"
 const NULL_MARKER = "<null>"
 

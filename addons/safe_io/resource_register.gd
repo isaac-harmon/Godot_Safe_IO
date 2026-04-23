@@ -1,11 +1,5 @@
 @tool class_name SafeIOResourceRegister extends Resource
 
-## Appended list for runtime additions to the register.
-## Same as [member _resource_register], it's recommended you don't manually modify this.
-## Use [method add_dir] or [method add_file] to safely add to the register, 
-## and [method remove_dir] or [method remove_file] to safely remove from it. 
-static var _runtime_register: Dictionary[String, StringName]
-
 @export_tool_button("Bake Resource Register", "Bake") var bake_list: Callable = _bake
 
 ## Full list of all resources instantiable by by [SafeIOLoader].
@@ -34,6 +28,9 @@ func _get_property_list() -> Array[Dictionary]:
 ## unlike permanant entries which can be loaded/unloaded when needed.
 func add_dir(path: String, include_subdirs := false) -> Error:
 	
+	if not Engine.is_editor_hint():
+		return Error.ERR_UNAUTHORIZED
+	
 	if not DirAccess.dir_exists_absolute(path):
 		return Error.ERR_FILE_NOT_FOUND
 	
@@ -41,10 +38,8 @@ func add_dir(path: String, include_subdirs := false) -> Error:
 		
 		var full_path := path + file
 		if not file.ends_with("/"):
-			
 			var error := add_file(full_path)
-			if Engine.is_editor_hint():
-				_print_file_error(error, full_path)
+			_print_file_error(error, full_path)
 		
 		elif include_subdirs:
 			add_dir(full_path, true)
@@ -58,6 +53,9 @@ func add_dir(path: String, include_subdirs := false) -> Error:
 ## unlike permanant entries which can be loaded/unloaded when needed.
 func add_file(path: String) -> Error:
 	
+	if not Engine.is_editor_hint():
+		return Error.ERR_UNAUTHORIZED
+	
 	if not ResourceLoader.exists(path):
 		return Error.ERR_FILE_NOT_FOUND
 	
@@ -70,27 +68,22 @@ func add_file(path: String) -> Error:
 	var script := resource.get_script() as Script
 	var type := script.get_global_name() if script else resource.get_class()
 	
-	var appropriate_dict := _baked_register if Engine.is_editor_hint() else _runtime_register
-	appropriate_dict[path] = type
+	_baked_register[path] = type
 	return Error.OK
 
 
 ## Returns the registered classname of resource at [param path] if registered,
 ## or an empty string if not found.
 func get_registered_resource_type(path: String) -> StringName:
-	
 	path = ResourceUID.path_to_uid(path)
-	if path in _baked_register:
-		return _baked_register[path]
-	
-	return _runtime_register.get(path, &"")
+	return _baked_register.get(path, &"")
 
 
 ## Checks if [param path] is registered.
 ## If checking the safety of a file manually, use [method is_resource_safe] instead.
 func is_resource_registered(path: StringName) -> bool:
 	var uid := ResourceUID.path_to_uid(path)
-	return uid in _baked_register or uid in _runtime_register
+	return uid in _baked_register
 
 
 ## Used to check the safety and validity of an unknown resource at [param path] before loading.
@@ -104,37 +97,6 @@ func is_resource_safe(path: StringName) -> bool:
 	
 	path = ResourceUID.ensure_path(path)
 	return path.get_extension() in SafeIO.get_recognized_extensions()
-
-
-## Attempts to erase all resources within the directory at [param path].
-## Note: Because all files within [code]"res://"[/code] become read-only when exported,
-## this can only remove entries added at runtime with [method add_dir] or [method add_file].
-func remove_dir(path: String, include_subdirs := false) -> bool:
-	
-	if not DirAccess.dir_exists_absolute(path):
-		return false
-	
-	for file in ResourceLoader.list_directory(path):
-		
-		var full_path := path + file
-		if not file.ends_with("/"):
-			remove_file(full_path)
-		
-		elif include_subdirs:
-			remove_dir(full_path, true)
-	
-	return true
-
-
-## Attempts to erase the resource at [param path].
-## Note: Because all files within [code]"res://"[/code] become read-only when exported,
-## this can only remove entries added at runtime with [method add_dir] or [method add_file].
-func remove_file(path: String) -> bool:
-	
-	if _runtime_register.erase(ResourceUID.path_to_uid(path)):
-		return true
-	
-	return _runtime_register.erase(path)
 
 
 func _bake() -> Error:

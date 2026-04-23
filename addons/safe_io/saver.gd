@@ -63,9 +63,8 @@ func _get_property_default_value(resource: Resource, property: StringName):
 	var script: Script = resource.get_script()
 	while script != null:
 
-		for p in script.get_script_property_list():
-			if p["name"] != property:
-				return script.get_property_default_value(property)
+		if property in script.get_script_property_list().map(func(p): return p["name"]):
+			return script.get_property_default_value(property)
 
 		script = script.get_base_script()
 
@@ -84,6 +83,27 @@ func _serialize(resource: Resource, metadata: SaveMetadata) -> Dictionary[String
 
 	resource_data[SafeIO.DEPENDENCIES_MARKER] = dependencies
 	return resource_data
+
+
+func _serialize_dictionary(dictionary: Dictionary, metadata: SaveMetadata) -> Dictionary:
+
+	var serialized := {}
+	for key in dictionary:
+
+		var new_key = _serialize_value(key, metadata)
+		if not metadata.keep_compressed:
+
+			if new_key == null:
+				new_key = SafeIO.NULL_MARKER
+
+			elif new_key is not String:
+				new_key = JSON.from_native(new_key)
+
+			assert(new_key is String or new_key is bool)
+
+		serialized[new_key] = _serialize_value(dictionary[key], metadata)
+
+	return serialized
 
 
 ## Converts [param resource] into a string-keyed [Dictionary].
@@ -110,7 +130,7 @@ func _serialize_value(value, metadata: SaveMetadata):
 
 	match typeof(value):
 
-		TYPE_NIL, TYPE_INT, TYPE_FLOAT:
+		TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_FLOAT:
 			return value
 
 		TYPE_STRING:
@@ -120,23 +140,7 @@ func _serialize_value(value, metadata: SaveMetadata):
 			return value.map(_serialize_value.bind(metadata))
 
 		TYPE_DICTIONARY:
-			var fixed := {}
-			for key in value:
-
-				var new_key = _serialize_value(key, metadata)
-				if not metadata.keep_compressed:
-
-					if new_key == null:
-						new_key = SafeIO.NULL_MARKER
-
-					elif new_key is not String:
-						new_key = JSON.from_native(new_key)
-						if new_key is not String:
-							continue
-
-				fixed[new_key] = _serialize_value(value[key], metadata)
-
-			return fixed
+			return _serialize_dictionary(value, metadata)
 
 		TYPE_OBJECT:
 			if value is not Resource:
@@ -154,5 +158,8 @@ func _serialize_value(value, metadata: SaveMetadata):
 
 			return SafeIO.OBJECT_MARKER + str(value.get_instance_id())
 
-		_:
+		TYPE_STRING_NAME, TYPE_NODE_PATH:
 			return value if metadata.keep_compressed else JSON.from_native(value)
+
+		_:
+			return value if metadata.keep_compressed else var_to_str(value)
