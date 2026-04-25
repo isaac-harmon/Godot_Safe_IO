@@ -215,11 +215,8 @@ func _deserialize_string(string: String, metadata: LoadMetadata):
 	if string.begins_with(SafeIO.OBJECT_MARKER):
 		return _load_dependency(string.trim_prefix(SafeIO.OBJECT_MARKER).to_int(), metadata)
 
-	match string:
-		"true": return true
-		"false": return false
-		SafeIO.ROOT_OBJECT_MARKER: return metadata.base_resource
-		SafeIO.NULL_MARKER: return null
+	if string == SafeIO.ROOT_OBJECT_MARKER:
+		return metadata.base_resource
 
 	match string.get_slice(":", 0):
 		"s", "sn", "np", "i", "f":
@@ -244,20 +241,21 @@ func _deserialize_resource(object_data: Dictionary, metadata: LoadMetadata) -> R
 	if metadata.base_resource == null:
 		metadata.base_resource = resource
 
-	for property in SafeIO.get_serializeable_properties(resource):
+	var property_list := SafeIO.get_serializeable_properties(resource)
+	for property in property_list:
 
-		var json_name := SafeIO.get_serialized_name(property["name"])
+		var json_name := SafeIO.get_serialized_name(property)
 		if not json_name in object_data:
 			continue
 
 		var value = _deserialize_value(object_data[json_name], metadata)
 
-		if property["type"] == TYPE_ARRAY or property["type"] == TYPE_DICTIONARY:
-			var current = resource.get(property["name"])
+		if property_list[property] == TYPE_ARRAY or property_list[property] == TYPE_DICTIONARY:
+			var current = resource.get(property)
 			current.assign(value)
 			value = current
 
-		resource.set(property["name"], value)
+		resource.set(property, value)
 
 	return resource
 

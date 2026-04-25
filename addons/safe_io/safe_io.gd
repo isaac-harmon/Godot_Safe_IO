@@ -7,11 +7,9 @@ const TYPE_MARKER = "<type>"
 const DEPENDENCIES_MARKER = "<dependencies>"
 const OBJECT_MARKER = "obj:"
 const ROOT_OBJECT_MARKER = "<rootobj>"
-const NULL_MARKER = "<null>"
 
 const REGISTERED_DIRS = "safe_io/general/registered_resource_directories"
 const REGISTERED_FILES = "safe_io/general/registered_resource_files"
-const CUSTOM_FILE_PATH = "safe_io/general/custom_register_file_path"
 
 var rebake_required := true
 
@@ -32,35 +30,41 @@ static func get_recognized_extensions() -> PackedStringArray:
 ## [b]If no file found and in-editor[/b]: A newly generated register.
 static func get_register() -> SafeIOResourceRegister:
 
-	var file_path = ProjectSettings.get_setting(CUSTOM_FILE_PATH)
-	if not file_path or file_path is not String:
-		file_path = "res://addons/safe_io/resource_register.res"
+	var file_path = "res://addons/safe_io/resource_register.res"
 
-	file_path = ResourceUID.ensure_path(file_path)
-
-	if not ResourceLoader.exists(file_path):
-
-		if not Engine.is_editor_hint():
-			push_error("[SafeIO]: Register file \"%s\" does not exist!" % file_path)
-			return null
-
-		print("[SafeIO]: Creating new register file at \"%s\"." % file_path)
-
+	if Engine.is_editor_hint():
+		print("[SafeIO]: Creating new resource register.")
 		var new_list := SafeIOResourceRegister.new()
 		new_list.take_over_path(file_path)
-		ResourceSaver.save(new_list)
-
 		return new_list
+
+	if not ResourceLoader.exists(file_path):
+		push_error("[SafeIO]: Register file \"%s\" does not exist!" % file_path)
+		return null
 
 	var register := load(file_path) as SafeIOResourceRegister
 	assert(register != null, "[SafeIO]: Existing file at \"%s\" is not a valid Register! " % file_path)
 	return register
 
 
-## Returns an array of Dictionaries of property data that can be serialized by [SafeIOSaver].
-## Entries are identical to those from [method Object.get_property_list].
-static func get_serializeable_properties(resource: Resource) -> Array:
-	return resource.get_property_list().filter(_is_valid_property)
+## Returns a Dictionary of data for all properties with [constant @GlobalScope.PROPERTY_USAGE_STORAGE]
+## enabled, minus those [SafeIOLoader] can't or shouldn't load.[br][br]
+## [b]Keys:[/b] Property name.[br]
+## [b]Values:[/b] Property type as a [enum @GlobalScope.Variant.Type].
+static func get_serializeable_properties(resource: Resource) -> Dictionary[String, int]:
+
+	# Building list
+	var property_list: Dictionary[String, int]
+	for property in resource.get_property_list():
+		if property["usage"] & PROPERTY_USAGE_STORAGE:
+			property_list[property["name"]] = property["type"]
+
+	# erasing unneeded entries to reduce resulting file size
+	property_list.erase("script")
+	for entry in resource.get_meta_list():
+		property_list.erase("metadata/%s" % entry)
+
+	return property_list
 
 
 ## Converts a string to snake_case and strips leading underscores.
@@ -68,11 +72,6 @@ static func get_serializeable_properties(resource: Resource) -> Array:
 ## regardless of the naming convention used in source code.
 static func get_serialized_name(name: String) -> String:
 	return name.lstrip("_").to_snake_case()
-
-
-static func _is_valid_property(property: Dictionary) -> bool:
-	var serializable: bool = property["usage"] & PROPERTY_USAGE_STORAGE
-	return serializable and property["name"] != "script"
 
 
 func _enable_plugin() -> void:
@@ -99,20 +98,12 @@ func _enable_plugin() -> void:
 		]
 	})
 
-	ProjectSettings.set_setting(CUSTOM_FILE_PATH, "")
-	ProjectSettings.add_property_info({
-		"name": CUSTOM_FILE_PATH,
-		"type": TYPE_STRING,
-		"hint": PROPERTY_HINT_FILE
-	})
-
 	ProjectSettings.settings_changed.connect(func(): rebake_required = true)
 
 
 func _disable_plugin() -> void:
 	ProjectSettings.set_setting(REGISTERED_FILES, null)
 	ProjectSettings.set_setting(REGISTERED_DIRS, null)
-	ProjectSettings.set_setting(CUSTOM_FILE_PATH, null)
 
 
 func _build() -> bool:

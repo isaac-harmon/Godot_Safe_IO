@@ -1,7 +1,7 @@
 {
   "<dependencies>": {
     "-9223371960384223248": "uid://yo7l3d8xe2wa",
-    "-9223371956525463482": {
+    "-9223371955904706512": {
       "<type>": "uid://bgetirful6b64",
       "boolean": true,
       "sub_resource": "<rootobj>"
@@ -9,11 +9,12 @@
   },
   "<type>": "uid://bgetirful6b64",
   "aabb": "AABB(1, 1, 1, 1, 1, 1)",
-  "array": [true, 1, 2.0, "s:3"],
+  "array": [null, true, 1, 2.0, "s:3"],
   "basis": "Basis(1, 0, 0, 0, 1, 0, 0, 0, -1)",
   "boolean": true,
   "color": "Color(0.9607843, 0.9607843, 0.8627451, 1)",
   "dictionary": {
+    "<null>": null,
     "false": false,
     "true": true,
     "f:2.0": 2.0,
@@ -41,7 +42,7 @@
   "self_ref": "<rootobj>",
   "string": "s:4",
   "string_name": "sn:5",
-  "sub_resource": "obj:-9223371956525463482",
+  "sub_resource": "obj:-9223371955904706512",
   "transform_2d": "Transform2D(-1, 0, 0, 1, 0, 0)",
   "transform_3d": "Transform3D(1, 0, 0, 0, -1, 0, 0, 0, 1, 0, 0, 0)",
   "typed_array": [1, 2, 3],

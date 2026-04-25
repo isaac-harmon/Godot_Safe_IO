@@ -92,25 +92,24 @@ func _serialize_dictionary(dictionary: Dictionary, metadata: SaveMetadata) -> Di
 
 		var new_key = _serialize_value(key, metadata)
 		if not metadata.keep_compressed:
+			match typeof(new_key):
 
-			if new_key == null:
-				new_key = SafeIO.NULL_MARKER
+				TYPE_NIL, TYPE_BOOL, TYPE_STRING:
+					pass
 
-			elif new_key is not String:
-				new_key = JSON.from_native(new_key)
-
-			assert(new_key is String or new_key is bool)
+				_:
+					new_key = JSON.from_native(new_key)
+					assert(new_key is String)
 
 		serialized[new_key] = _serialize_value(dictionary[key], metadata)
 
 	return serialized
 
 
-## Converts [param resource] into a string-keyed [Dictionary].
 func _serialize_resource(resource: Resource, metadata: SaveMetadata) -> Dictionary[String, Variant]:
 
 	var output: Dictionary[String, Variant]
-	for property in SafeIO.get_serializeable_properties(resource).map(func(p): return p["name"]):
+	for property in SafeIO.get_serializeable_properties(resource):
 		var value = resource.get(property)
 		if value != _get_property_default_value(resource, property):
 			output[SafeIO.get_serialized_name(property)] = _serialize_value(value, metadata)
@@ -125,7 +124,6 @@ func _serialize_resource(resource: Resource, metadata: SaveMetadata) -> Dictiona
 	return output
 
 
-## Converts [param value] into a Dictionary-compatible format.
 func _serialize_value(value, metadata: SaveMetadata):
 
 	match typeof(value):
