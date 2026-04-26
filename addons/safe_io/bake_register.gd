@@ -1,7 +1,5 @@
-@tool class_name BakeSafeIOResourceRegister extends EditorScript
+@tool class_name SafeIOBakeResourceRegister extends EditorScript
 
 
 func _run() -> void:
-	var register := SafeIO.get_register()
-	if register:
-		register._bake()
+	SafeIOResourceRegister.new()._bake()

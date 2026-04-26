@@ -39,65 +39,29 @@ class LoadMetadata:
 			raw_dependency_data[object_id] = dependency_data[entry]
 
 
-func _get_classes_used(path: String) -> PackedStringArray:
-
-	var register := SafeIO.get_register()
-	if not register:
-		return []
-
-	var get_type_name := func(type: String) -> String:
-
-		if ClassDB.class_exists(type):
-			return type
-
-		return register.get_registered_resource_type(type)
-
-	return _process_dependency_types(path, get_type_name)
-
-
-func _get_dependencies(path: String, add_types: bool) -> PackedStringArray:
-
-	var register := SafeIO.get_register()
-	if not register:
-		return []
-
-	var generate_string := func(type: String, add_types: bool) -> String:
-
-		if not type or ClassDB.class_exists(type):
-			return ""
-
-		var primary_path := ResourceUID.path_to_uid(type)
-		var secondary_path := ResourceUID.ensure_path(type)
-		var type_name: String = register.get_registered_resource_type(primary_path) if add_types else ""
-
-		if secondary_path == primary_path:
-			secondary_path = ""
-
-		var output_string := "%s::%s::%s" % [primary_path, type_name, secondary_path]
-		return output_string.rstrip(":")
-
-	return _process_dependency_types(path, generate_string.bind(add_types))
-
-
 func _get_recognized_extensions() -> PackedStringArray:
 	return SafeIO.get_recognized_extensions()
 
 
 func _get_resource_script_class(path: String) -> String:
 
-	var register := SafeIO.get_register()
-	if not register:
+	var file_contents = _load_file(path)
+	if file_contents is Error:
 		return ""
 
-	return register.get_registered_resource_type(path)
+	var type := str(file_contents.get(SafeIO.TYPE_MARKER))
+	var register := SafeIOResourceRegister.get_register()
+	return register.get_registered_script_name(path) if register else ""
 
 
 func _get_resource_type(path: String) -> String:
-	var type := _get_resource_script_class(path)
-	if not type or ClassDB.class_exists(type):
-		return type
 
-	return "Resource"
+	var file_contents = _load_file(path)
+	if file_contents is Error:
+		return ""
+
+	var type := str(file_contents.get(SafeIO.TYPE_MARKER))
+	return type if ClassDB.class_exists(type) else "Resource"
 
 
 func _handles_type(_type: StringName) -> bool:
@@ -117,34 +81,7 @@ func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_m
 	if resource == null:
 		return Error.ERR_FILE_CORRUPT
 
-	resource.take_over_path(path)
 	return resource
-
-
-func _rename_dependencies(path: String, renames: Dictionary) -> Error:
-
-	var data = _load_file(path)
-	if data is Error:
-		return data
-
-	if data.get(SafeIO.TYPE_MARKER) in renames:
-		data[SafeIO.TYPE_MARKER] = renames[data[SafeIO.TYPE_MARKER]]
-
-	if not SafeIO.DEPENDENCIES_MARKER in data:
-		return Error.OK
-
-	var dependencies := data[SafeIO.DEPENDENCIES_MARKER] as Dictionary
-	for entry in dependencies:
-
-		if dependencies[entry] is Dictionary:
-			var type_path = dependencies[entry].get(SafeIO.TYPE_MARKER)
-			if type_path in renames:
-				dependencies[entry][SafeIO.TYPE_MARKER] = renames[type_path]
-
-		elif entry in renames:
-			dependencies[entry] = renames[entry]
-
-	return Error.OK
 
 
 func _load_dependency(object_id: int, metadata: LoadMetadata) -> Resource:
@@ -161,7 +98,11 @@ func _load_dependency(object_id: int, metadata: LoadMetadata) -> Resource:
 			result = _deserialize_resource(object_data, metadata)
 
 		TYPE_STRING:
-			result = _load_external_resource(object_data, metadata.cache_mode)
+			var register = SafeIOResourceRegister.get_register()
+			if not register or not register.is_resource_safe(object_data):
+				return null
+			else:
+				result = ResourceLoader.load(object_data, "", metadata.cache_mode)
 
 		_:
 			return null
@@ -194,20 +135,6 @@ func _load_file(path: String):
 		data = json.data
 
 	return data if data is Dictionary else Error.ERR_INVALID_DATA
-
-
-## Verifies the safety of the resource at [param path],
-## Returns the loaded resource on success or null on failure.
-func _load_external_resource(path: String, cache_mode: ResourceLoader.CacheMode) -> Resource:
-
-	var register = SafeIO.get_register()
-	if not register:
-		return null
-
-	if not register.is_resource_safe(path):
-		return null
-
-	return ResourceLoader.load(path, "", cache_mode)
 
 
 func _deserialize_string(string: String, metadata: LoadMetadata):
@@ -284,7 +211,7 @@ func _deserialize_value(value, metadata: LoadMetadata):
 ## Expects the name of a built-in type, or the path to a custom script.
 func _instantiate_resource(type: String) -> Resource:
 
-	var register = SafeIO.get_register()
+	var register = SafeIOResourceRegister.get_register()
 	if not register:
 		return null
 
@@ -306,36 +233,4 @@ func _instantiate_resource(type: String) -> Resource:
 	if not ClassDB.is_parent_class(base_class, &"Resource"):
 		return null
 
-	var resource: Resource = script.new()
-	return resource
-
-
-## Runs [param action] on each dependency in the resource at path,
-## and returns an array of all non-empty results.
-## Expects [param action] to take one [String] input and return a [String].
-func _process_dependency_types(path: String, action: Callable) -> PackedStringArray:
-
-	var data = _load_file(path)
-	if data is Error or SafeIO.TYPE_MARKER not in data:
-		return []
-
-	var output: PackedStringArray
-	var result: String = action.call(str(data[SafeIO.TYPE_MARKER]))
-
-	if result:
-		output.append(result)
-
-	if not SafeIO.DEPENDENCIES_MARKER in data:
-		return output
-
-	for entry in data[SafeIO.DEPENDENCIES_MARKER]:
-
-		var entry_value = data[SafeIO.DEPENDENCIES_MARKER][entry]
-		if entry_value is Dictionary:
-			entry_value = entry_value.get(SafeIO.TYPE_MARKER, "")
-
-		result = action.call(str(entry_value))
-		if result:
-			output.append(result)
-
-	return output
+	return script.new()

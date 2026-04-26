@@ -1,11 +1,26 @@
 @tool class_name SafeIOResourceRegister extends Resource
 
+const _FILE_PATH = "res://addons/safe_io/resource_register.res"
+
 @export_tool_button("Bake Resource Register", "Bake") var bake_list: Callable = _bake
 
 ## Full list of all resources instantiable by by [SafeIOLoader].
 ## It's recommended you don't manually modify this, instead rebaking with the button
 ## in the resource inspector, or by running the provided editor script.
 var _baked_register: Dictionary[String, StringName]
+
+
+## Attempts to load the current [SafeIOResourceRegister].
+## Returns the register if succesfully loaded or null otherwise.
+static func get_register() -> SafeIOResourceRegister:
+	
+	if not ResourceLoader.exists(_FILE_PATH):
+		push_error("[SafeIO]: Register file \"%s\" does not exist!" % _FILE_PATH)
+		return null
+	
+	var register := load(_FILE_PATH) as SafeIOResourceRegister
+	assert(register != null, "[SafeIO]: Existing file at \"%s\" is not a valid Register! " % _FILE_PATH)
+	return register
 
 
 func _get_property_list() -> Array[Dictionary]:
@@ -22,59 +37,9 @@ func _get_property_list() -> Array[Dictionary]:
 	}]
 
 
-## Appends all resources within the directory at [param path] to the resource register.[br][br]
-## Note: Because all files within [code]"res://"[/code] become read-only when exported,
-## any appended entries must be kept in memory for the duration of the program,
-## unlike permanant entries which can be loaded/unloaded when needed.
-func add_dir(path: String, include_subdirs := false) -> Error:
-	
-	if not Engine.is_editor_hint():
-		return Error.ERR_UNAUTHORIZED
-	
-	if not DirAccess.dir_exists_absolute(path):
-		return Error.ERR_FILE_NOT_FOUND
-	
-	for file in ResourceLoader.list_directory(path):
-		
-		var full_path := path + file
-		if not file.ends_with("/"):
-			var error := add_file(full_path)
-			_print_file_error(error, full_path)
-		
-		elif include_subdirs:
-			add_dir(full_path, true)
-	
-	return Error.OK
-
-
-## Appends the given resource at [param path] to the resource register.[br][br]
-## Note: Because all files within [code]"res://"[/code] become read-only when exported,
-## any appended entries must be kept in memory for the duration of the program,
-## unlike permanant entries which can be loaded/unloaded when needed.
-func add_file(path: String) -> Error:
-	
-	if not Engine.is_editor_hint():
-		return Error.ERR_UNAUTHORIZED
-	
-	if not ResourceLoader.exists(path):
-		return Error.ERR_FILE_NOT_FOUND
-	
-	if is_resource_registered(path):
-		return Error.ERR_DUPLICATE_SYMBOL
-	
-	var resource := load(path)
-	path = ResourceUID.path_to_uid(path)
-	
-	var script := resource.get_script() as Script
-	var type := script.get_global_name() if script else resource.get_class()
-	
-	_baked_register[path] = type
-	return Error.OK
-
-
-## Returns the registered classname of resource at [param path] if registered,
-## or an empty string if not found.
-func get_registered_resource_type(path: String) -> StringName:
+## Returns the registered classname of scripts at [param path] if registered,
+## or an empty string if either not found or not a script.
+func get_registered_script_name(path: String) -> StringName:
 	path = ResourceUID.path_to_uid(path)
 	return _baked_register.get(path, &"")
 
@@ -99,6 +64,46 @@ func is_resource_safe(path: StringName) -> bool:
 	return path.get_extension() in SafeIO.get_recognized_extensions()
 
 
+func _add_dir(path: String, include_subdirs := false) -> Error:
+	
+	if not Engine.is_editor_hint():
+		return Error.ERR_UNAUTHORIZED
+	
+	if not DirAccess.dir_exists_absolute(path):
+		return Error.ERR_FILE_NOT_FOUND
+	
+	for file in ResourceLoader.list_directory(path):
+		
+		var full_path := path + file
+		if not file.ends_with("/"):
+			var error := _add_file(full_path)
+			_print_file_error(error, full_path)
+		
+		elif include_subdirs:
+			_add_dir(full_path, true)
+	
+	return Error.OK
+
+
+func _add_file(path: String) -> Error:
+	
+	if not Engine.is_editor_hint():
+		return Error.ERR_UNAUTHORIZED
+	
+	if not ResourceLoader.exists(path):
+		return Error.ERR_FILE_NOT_FOUND
+	
+	if is_resource_registered(path):
+		return Error.ERR_DUPLICATE_SYMBOL
+	
+	var resource := load(path)
+	var type: String = resource.get_global_name() if resource is Script else ""
+	path = ResourceUID.path_to_uid(path)
+	_baked_register[path] = type
+	
+	return Error.OK
+
+
 func _bake() -> Error:
 	
 	if not Engine.is_editor_hint():
@@ -113,7 +118,7 @@ func _bake() -> Error:
 	for directory in ProjectSettings.get_setting(SafeIO.REGISTERED_DIRS, []):
 		print_rich("[color=web_gray] - Parsing \"%s\"" % directory)
 		
-		var error := add_dir(directory + "/")
+		var error := _add_dir(directory + "/")
 		match error:
 			Error.OK:
 				pass
@@ -127,23 +132,29 @@ func _bake() -> Error:
 	print("\n[SafeIO]: (Bake 2/3) Parsing registered files.")
 	
 	for file in ProjectSettings.get_setting(SafeIO.REGISTERED_FILES, []):
-		_print_file_error(add_file(file), file)
+		_print_file_error(_add_file(file), file)
 	
 	print("\n[SafeIO]: (Bake 3/3) Writing baked list to file.")
 	
+	var error := false
 	for attempt in range(3):
-		var error := ResourceSaver.save(self)
+		error = ResourceSaver.save(self, _FILE_PATH)
 		if not error:
 			break
 		
-		if attempt >= 2:
-			push_error("[SafeIO]: Aborted, cannot save! Error code %d: (%s)" % [error, error_string(error)])
-			return Error.ERR_FILE_CANT_WRITE
-		
-		push_warning("[SafeIO]: An error occured when writing to path \"%s\". Retrying..." % resource_path)
+		push_warning("[SafeIO]: Error code %d (%s) occured when writing to file! Retrying..." % [
+			error,
+			error_string(error)
+		])
 	
-	print("\n[SafeIO]: Succesfully wrote result to \"%s\". Bake complete!" % resource_path)
+	if error:
+		push_error("[SafeIO]: Bake aborted, cannot write to file path \"%s\"!" % _FILE_PATH)
+		return Error.ERR_FILE_CANT_WRITE
+	
+	take_over_path(_FILE_PATH)
 	notify_property_list_changed()
+	
+	print("\n[SafeIO]: Succesfully wrote result to \"%s\". Bake complete!" % _FILE_PATH)
 	return Error.OK
 
 
@@ -161,4 +172,7 @@ func _print_file_error(error: Error, path: String) -> void:
 			push_warning("[SafeIO]: Duplicate file \"%s\" in register!" % true_path)
 		
 		_:
-			assert(false, "Unimplemented error message for error: %s" % error_string(error))
+			assert(false, "Unimplemented error message for error code %d: %s" % [
+				error,
+				error_string(error)
+			])

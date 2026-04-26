@@ -22,31 +22,6 @@ static func get_recognized_extensions() -> PackedStringArray:
 	]
 
 
-## Attempts to load the [SafeIOResourceRegister] pointed to by the setting:
-## [member ProjectSetings.safe_io/general/custom_list_file_path].[br][br]
-## Returns one of the following options:[br][br]
-## [b]Load successful[/b]: The loaded register.[br]
-## [b]Incorrect file type or during runtime[/b]: Throws an error and returns null.[br]
-## [b]If no file found and in-editor[/b]: A newly generated register.
-static func get_register() -> SafeIOResourceRegister:
-
-	var file_path = "res://addons/safe_io/resource_register.res"
-
-	if Engine.is_editor_hint():
-		print("[SafeIO]: Creating new resource register.")
-		var new_list := SafeIOResourceRegister.new()
-		new_list.take_over_path(file_path)
-		return new_list
-
-	if not ResourceLoader.exists(file_path):
-		push_error("[SafeIO]: Register file \"%s\" does not exist!" % file_path)
-		return null
-
-	var register := load(file_path) as SafeIOResourceRegister
-	assert(register != null, "[SafeIO]: Existing file at \"%s\" is not a valid Register! " % file_path)
-	return register
-
-
 ## Returns a Dictionary of data for all properties with [constant @GlobalScope.PROPERTY_USAGE_STORAGE]
 ## enabled, minus those [SafeIOLoader] can't or shouldn't load.[br][br]
 ## [b]Keys:[/b] Property name.[br]
@@ -111,9 +86,5 @@ func _build() -> bool:
 	if not rebake_required:
 		return true
 
-	var register := SafeIO.get_register()
-	if not register:
-		return false
-
-	rebake_required = register._bake() != Error.OK
+	rebake_required = SafeIOResourceRegister.new()._bake() != Error.OK
 	return not rebake_required
