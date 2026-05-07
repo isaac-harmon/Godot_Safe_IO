@@ -139,6 +139,10 @@ func test_typed_array_stored_correctly() -> void:
 	assert_eq(actual.typed_array, expected.typed_array)
 
 
+func test_complex_array_stored_correctly() -> void:
+	assert_eq_deep(actual.complex_array, expected.complex_array)
+
+
 func test_object_array_stored_correctly() -> void:
 	assert_eq_deep(actual.object_array, expected.object_array)
 
@@ -193,5 +197,13 @@ func test_typed_dictionary_stored_correctly() -> void:
 	assert_eq_deep(actual.typed_dictionary, expected.typed_dictionary)
 
 
+func test_complex_dictionary_stored_correctly() -> void:
+	assert_eq_deep(actual.complex_dictionary, expected.complex_dictionary)
+
+
 func test_object_dictionary_stored_correctly() -> void:
 	assert_eq_deep(actual.object_dictionary, expected.object_dictionary)
+
+
+func test_not_stored_extra() -> void:
+	assert_true(actual.dont_store)

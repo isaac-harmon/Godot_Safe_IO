@@ -45,6 +45,7 @@ enum TestEnum {
 
 @export var array: Array
 @export var typed_array: Array[int]
+@export var complex_array: Array[Rect2]
 @export var object_array: Array[Resource]
 
 @export var packed_byte_array: PackedByteArray
@@ -62,7 +63,10 @@ enum TestEnum {
 
 @export var dictionary: Dictionary
 @export var typed_dictionary: Dictionary[int, int]
+@export var complex_dictionary: Dictionary[int, Vector2]
 @export var object_dictionary: Dictionary[Resource, Resource]
+
+var dont_store: bool = true
 
 
 static func generate() -> TestResource:
@@ -113,6 +117,11 @@ static func generate() -> TestResource:
 
 	resource.array = [null, true, 1, 2.0, "3"]
 	resource.typed_array.assign([1, 2, 3])
+	resource.complex_array.assign([
+		Rect2(Rect2(Vector2.ONE, Vector2.ONE * 2)),
+		Rect2(Rect2(Vector2.ONE * 3, Vector2.ONE * 4)),
+		Rect2(Rect2(Vector2.ONE * 5, Vector2.ONE * 6))
+	])
 	resource.object_array.assign([
 		trusted_resource,
 		unknown_resource,
@@ -127,10 +136,27 @@ static func generate() -> TestResource:
 
 	resource.packed_string_array = ["1", "2", "3"]
 
-	resource.packed_vector2_array = [Vector2.ONE]
-	resource.packed_vector3_array = [Vector3.ONE]
-	resource.packed_vector4_array = [Vector4.ONE]
-	resource.packed_color_array = [Color.BEIGE]
+	resource.packed_vector2_array = [
+		Vector2.ONE,
+		Vector2.ONE * 2,
+		Vector2.ONE * 3,
+		]
+	resource.packed_vector3_array = [
+		Vector3.ONE,
+		Vector3.ONE * 2,
+		Vector3.ONE * 3,
+		]
+	resource.packed_vector4_array = [
+		Vector4.ONE,
+		Vector4.ONE * 2,
+		Vector4.ONE * 3,
+		]
+	resource.packed_color_array = [
+		Color.RED,
+		Color.GREEN,
+		Color.BLUE,
+		Color.WHITE
+	]
 
 	resource.dictionary = {
 		null: null,
@@ -145,10 +171,17 @@ static func generate() -> TestResource:
 		2: 2,
 		3: 3,
 	})
+	resource.complex_dictionary.assign({
+		1: Vector2.ONE,
+		2: Vector2.ONE * 2,
+		3: Vector2.ONE * 3
+	})
 	resource.object_dictionary.assign({
 		trusted_resource: trusted_resource,
 		unknown_resource: unknown_resource,
 		null: null,
 	})
+
+	resource.dont_store = false
 
 	return resource

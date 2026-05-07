@@ -82,12 +82,12 @@ func _serialize_dictionary(dictionary: Dictionary, metadata: SaveMetadata) -> Di
 		var new_key = _serialize_value(key, metadata)
 		match typeof(new_key):
 
-			TYPE_NIL, TYPE_BOOL, TYPE_STRING:
-				pass
+			TYPE_NIL, TYPE_BOOL: pass
 
-			_ when not metadata.keep_compressed:
+			_ when not metadata.keep_compressed and key is not Object:
 				new_key = JSON.from_native(new_key)
-				assert(new_key is String)
+				if new_key is not String:
+					new_key
 
 		serialized[new_key] = _serialize_value(dictionary[key], metadata)
 
@@ -116,14 +116,11 @@ func _serialize_value(value, metadata: SaveMetadata):
 
 	match typeof(value):
 
-		TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_FLOAT:
+		TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING_NAME, TYPE_NODE_PATH:
 			return value
-
+		
 		TYPE_STRING:
-			return JSON.from_native(value)
-
-		TYPE_STRING_NAME, TYPE_NODE_PATH:
-			return value if metadata.keep_compressed else JSON.from_native(value)
+			return value if not metadata.keep_compressed else JSON.from_native(value)
 
 		TYPE_ARRAY:
 			return value.map(_serialize_value.bind(metadata))
@@ -148,4 +145,4 @@ func _serialize_value(value, metadata: SaveMetadata):
 			return SafeIO.OBJECT_MARKER + str(value.get_instance_id())
 
 		_:
-			return value if metadata.keep_compressed else var_to_str(value)
+			return value if metadata.keep_compressed else JSON.from_native(value)["args"]
