@@ -5,13 +5,12 @@ class LoadMetadata:
 
 	var base_resource: Resource
 	var cache_mode: ResourceLoader.CacheMode
-	var is_compressed: bool
 
 	var raw_dependency_data: Dictionary[int, Variant]
 	var dependency_cache: Dictionary[int, Resource]
 
 
-	func _init(dependency_data: Dictionary, cache_mode: ResourceFormatLoader.CacheMode, is_compressed: bool) -> void:
+	func _init(dependency_data: Dictionary, cache_mode: ResourceFormatLoader.CacheMode) -> void:
 
 		match cache_mode:
 
@@ -40,8 +39,6 @@ class LoadMetadata:
 
 			raw_dependency_data[object_id] = dependency_data[entry]
 
-		self.is_compressed = is_compressed
-
 
 func _get_recognized_extensions() -> PackedStringArray:
 	return SafeIO.get_recognized_extensions()
@@ -49,7 +46,7 @@ func _get_recognized_extensions() -> PackedStringArray:
 
 func _get_resource_script_class(path: String) -> String:
 
-	var file_contents = _load_file(path, _is_file_compressed(path))
+	var file_contents = _load_file(path)
 	if file_contents is Error:
 		return ""
 
@@ -60,7 +57,7 @@ func _get_resource_script_class(path: String) -> String:
 
 func _get_resource_type(path: String) -> String:
 
-	var file_contents = _load_file(path, _is_file_compressed(path))
+	var file_contents = _load_file(path)
 	if file_contents is Error:
 		return ""
 
@@ -76,8 +73,7 @@ func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_m
 
 	path = ResourceUID.ensure_path(path)
 	
-	var is_compressed = _is_file_compressed(path)
-	var load_result = _load_file(path, is_compressed)
+	var load_result = _load_file(path)
 	if load_result is Error:
 		return load_result
 
@@ -85,8 +81,7 @@ func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_m
 	
 	var metadata := LoadMetadata.new(
 		dependency_data if dependency_data is Dictionary else {},
-		cache_mode,
-		is_compressed
+		cache_mode
 	)
 	
 	var resource := _deserialize_resource(load_result, metadata)
@@ -125,10 +120,10 @@ func _load_dependency(object_id: int, metadata: LoadMetadata) -> Resource:
 
 ## Attempts to load and parse data from the file at [param path].
 ## Returns a [String]-keyed dictionary on success, or an [enum Error] on failure.
-func _load_file(path: String, is_compressed: bool):
+func _load_file(path: String):
 
 	var data
-	if is_compressed:
+	if path.ends_with(SafeIO.BINARY_FILE_FORMAT):
 		var file := FileAccess.open_compressed(path, FileAccess.READ)
 		if not file:
 			return FileAccess.get_open_error()
@@ -147,86 +142,6 @@ func _load_file(path: String, is_compressed: bool):
 		data = json.data
 
 	return data if data is Dictionary else Error.ERR_INVALID_DATA
-
-
-## Turns arrays into the complex [enum Variant.Type] specified by [param type].
-## Ex: Vector2, Transform3D, Rect2i, etc...
-func _deserialize_complex_type(type: Variant.Type, args: Array):
-
-	var type_name: String
-	match type:
-
-		TYPE_RECT2, TYPE_RECT2I: type_name = "Rect2"
-		TYPE_VECTOR2, TYPE_VECTOR2I: type_name = "Vector2"
-		TYPE_VECTOR3, TYPE_VECTOR3I: type_name = "Vector3"
-		TYPE_VECTOR4, TYPE_VECTOR4I: type_name = "Vector4"
-		TYPE_COLOR: type_name = "Color"
-
-		TYPE_AABB: type_name = "AABB"
-		TYPE_BASIS: type_name = "Basis"
-		TYPE_PLANE: type_name = "Plane"
-		TYPE_TRANSFORM2D: type_name = "Transform2D"
-		TYPE_TRANSFORM3D: type_name = "Transform3D"
-
-		TYPE_PACKED_COLOR_ARRAY: type_name = "PackedColorArray"
-		TYPE_PACKED_VECTOR2_ARRAY: type_name = "PackedVector2Array"
-		TYPE_PACKED_VECTOR3_ARRAY: type_name = "PackedVector3Array"
-		TYPE_PACKED_VECTOR4_ARRAY: type_name = "PackedVector4Array"
-
-		_: return args
-
-	return JSON.to_native({
-		"args": args,
-		"type": type_name,
-	})
-
-
-func _deserialize_dictionary(new_dict: Dictionary, key_type: Variant.Type,
-	value_type: Variant.Type, metadata: LoadMetadata) -> Dictionary:
-
-	var output: Dictionary
-	for key in new_dict:
-
-		var converted_key
-		match key:
-			_ when metadata.is_compressed: converted_key = key
-
-			"<null>": converted_key = null
-			"false": converted_key = false
-			"true": converted_key = true
-			
-			_ when key.begins_with(SafeIO.OBJECT_MARKER): converted_key = key
-
-			_: converted_key = JSON.to_native(key)
-
-		converted_key = _deserialize_value(
-			converted_key,
-			converted_key,
-			key_type,
-			metadata
-		)
-
-		var converted_value = _deserialize_value(
-			new_dict[key],
-			new_dict[key],
-			value_type,
-			metadata
-		)
-
-		output[converted_key] = converted_value
-
-	return output
-
-
-func _deserialize_string(string: String, metadata: LoadMetadata, load_objects := true):
-
-	if load_objects and string == SafeIO.ROOT_OBJECT_MARKER:
-		return metadata.base_resource
-
-	if load_objects and string is String and string.begins_with(SafeIO.OBJECT_MARKER):
-		return _load_dependency(string.trim_prefix(SafeIO.OBJECT_MARKER).to_int(), metadata)
-
-	return string if not metadata.is_compressed else JSON.to_native(string)
 
 
 ## Converts any valid [Dictionary] into its corresponding type.
@@ -248,58 +163,56 @@ func _deserialize_resource(object_data: Dictionary, metadata: LoadMetadata) -> R
 		if not json_name in object_data:
 			continue
 
-		var value = _deserialize_value(
-			object_data[json_name],
-			resource.get(property),
-			property_list[property],
-			metadata
-		)
+		var value = _deserialize_value(object_data[json_name], metadata)
+		var property_type: Variant.Type = property_list[property]
+
+		if property_type == TYPE_ARRAY or property_type == TYPE_DICTIONARY:
+			var existing_value = resource.get(property)
+			existing_value.assign(value)
+			value = existing_value
 
 		resource.set(property, value)
 
 	return resource
 
 
-func _deserialize_value(new_value, current_value, type: Variant.Type, metadata: LoadMetadata):
+func _deserialize_value(value, metadata: LoadMetadata):
 
-	match type:
+	match typeof(value):
+
+		TYPE_STRING:
+			if value == SafeIO.ROOT_OBJECT_MARKER:
+				return metadata.base_resource
+
+			if value.begins_with(SafeIO.OBJECT_MARKER):
+				return _load_dependency(value.trim_prefix(SafeIO.OBJECT_MARKER).to_int(), metadata)
+
+			return JSON.to_native(value)
 
 		TYPE_ARRAY:
-			var mapped: Array = new_value.map(func(entry):
-				return _deserialize_value(
-					entry,
-					entry,
-					current_value.get_typed_builtin(),
-					metadata
-				)
-			)
-			
-			current_value.assign(mapped)
-			return current_value
+			if value[0] is String and ":" not in value[0] and value[0] != SafeIO.ROOT_OBJECT_MARKER:
+				return JSON.to_native({ "type": value[0], "args": value.slice(1) })
+
+			return value.map(_deserialize_value.bind(metadata))
 
 		TYPE_DICTIONARY:
-			var mapped: Dictionary = _deserialize_dictionary(
-				new_value,
-				current_value.get_typed_key_builtin(),
-				current_value.get_typed_value_builtin(),
-				metadata
-			)
-			
-			current_value.assign(mapped)
-			return current_value
+			var output: Dictionary
+			for key in value:
 
-		TYPE_OBJECT:
-			var output = _deserialize_string(new_value, metadata) if new_value is String else new_value
-			return output if output is Resource else null
+				var converted_key = key
+				match key:
+					"<null>": converted_key = null
+					"false": converted_key = false
+					"true": converted_key = true
 
-		_ when new_value is Array:
-			return _deserialize_complex_type(type, new_value)
+				converted_key = _deserialize_value(converted_key, metadata)
+				var converted_value = _deserialize_value(value[key], metadata)
+				output[converted_key] = converted_value
 
-		_ when new_value is String:
-			return _deserialize_string(new_value, metadata, type != TYPE_STRING)
+			return output
 
 		_:
-			return new_value
+			return value
 
 
 ## Instantiates a resource of the given type.
@@ -329,7 +242,3 @@ func _instantiate_resource(type: String) -> Resource:
 		return null
 
 	return script.new()
-
-
-func _is_file_compressed(path: String) -> bool:
-	return path.ends_with(SafeIO.BINARY_FILE_FORMAT)
