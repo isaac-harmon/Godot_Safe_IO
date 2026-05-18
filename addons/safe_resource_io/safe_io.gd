@@ -1,4 +1,4 @@
-@tool class_name SafeIO extends EditorPlugin
+@tool class_name SafeResourceIO extends EditorPlugin
 
 const TEXT_FILE_FORMAT = "sav"
 const BINARY_FILE_FORMAT = "bin"
@@ -6,15 +6,16 @@ const BINARY_FILE_FORMAT = "bin"
 const TYPE_MARKER = "<type>"
 const DEPENDENCIES_MARKER = "<dependencies>"
 const OBJECT_MARKER = "obj:"
-const ROOT_OBJECT_MARKER = "<rootobj>"
+const ROOT_OBJECT_MARKER = "obj:<root>"
 
-const REGISTERED_DIRS = "safe_io/general/registered_resource_directories"
-const REGISTERED_FILES = "safe_io/general/registered_resource_files"
+const REGISTERED_BASE_TYPES = "safe_resource_io/general/registered_base_types"
+const REGISTERED_DIRS = "safe_resource_io/general/registered_resource_directories"
+const REGISTERED_FILES = "safe_resource_io/general/registered_resource_files"
 
 var rebake_required := true
 
 
-## Returns an array of all file extentions recognized by [SafeIOSaver] and [SafeIOLoader].
+## Returns an array of all file extentions recognized by [SafeResourceIOSaver] and [SafeResourceIOLoader].
 static func get_recognized_extensions() -> PackedStringArray:
 	return [
 		TEXT_FILE_FORMAT,
@@ -23,7 +24,7 @@ static func get_recognized_extensions() -> PackedStringArray:
 
 
 ## Returns a Dictionary of data for all properties with [constant @GlobalScope.PROPERTY_USAGE_STORAGE]
-## enabled, minus those [SafeIOLoader] can't or shouldn't load.[br][br]
+## enabled, minus those [SafeResourceIOLoader] can't or shouldn't load.[br][br]
 ## [b]Keys:[/b] Property name.[br]
 ## [b]Values:[/b] Property type as a [enum @GlobalScope.Variant.Type].
 static func get_serializeable_properties(resource: Resource) -> Dictionary[String, int]:
@@ -51,6 +52,18 @@ static func get_serialized_name(name: String) -> String:
 
 func _enable_plugin() -> void:
 
+	ProjectSettings.set_setting(REGISTERED_BASE_TYPES, PackedStringArray())
+	ProjectSettings.set_as_basic(REGISTERED_BASE_TYPES, true)
+	ProjectSettings.add_property_info({
+		"name": REGISTERED_BASE_TYPES,
+		"type": TYPE_PACKED_STRING_ARRAY,
+		"hint_string": "%d/%d:%s" % [
+			TYPE_STRING,
+			PROPERTY_HINT_ENUM_SUGGESTION,
+			",".join(_get_all_resource_types()),
+		]
+	})
+
 	ProjectSettings.set_setting(REGISTERED_DIRS, PackedStringArray())
 	ProjectSettings.set_as_basic(REGISTERED_DIRS, true)
 	ProjectSettings.add_property_info({
@@ -73,10 +86,14 @@ func _enable_plugin() -> void:
 		]
 	})
 
-	ProjectSettings.settings_changed.connect(func(): rebake_required = true)
+	ProjectSettings.settings_changed.connect(func():
+		if ProjectSettings.check_changed_settings_in_group("safe_resource_io"):
+			rebake_required = true
+	)
 
 
 func _disable_plugin() -> void:
+	ProjectSettings.set_setting(REGISTERED_BASE_TYPES, null)
 	ProjectSettings.set_setting(REGISTERED_FILES, null)
 	ProjectSettings.set_setting(REGISTERED_DIRS, null)
 
@@ -86,5 +103,16 @@ func _build() -> bool:
 	if not rebake_required:
 		return true
 
-	rebake_required = SafeIOResourceRegister.new()._bake() != Error.OK
+	rebake_required = SafeResourceIORegister.new()._bake() != Error.OK
 	return not rebake_required
+
+
+func _get_all_resource_types() -> PackedStringArray:
+
+	var output: PackedStringArray
+	for type in ClassDB.get_class_list():
+		if ClassDB.is_parent_class(type, &"Resource"):
+			output.append(type)
+
+	output.sort()
+	return output

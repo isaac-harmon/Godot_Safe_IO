@@ -45,6 +45,14 @@ func test_node_path_stored_correctly() -> void:
 	assert_eq(actual.node_path, expected.node_path)
 
 
+func test_registered_type_stored_correctly() -> void:
+	assert_not_null(actual.registered_type)
+
+
+func test_unregistered_type_is_null() -> void:
+	assert_null(actual.unregistered_type)
+
+
 func test_self_ref_stored_correctly() -> void:
 	assert_eq(actual.self_ref, actual)
 
@@ -57,7 +65,7 @@ func test_external_trusted_resource_stored_correctly() -> void:
 	assert_eq(actual.external_trusted_resource, expected.external_trusted_resource)
 
 
-func test_external_untrusted_resource_stored_correctly() -> void:
+func test_external_untrusted_resource_is_null() -> void:
 	assert_null(actual.external_untrusted_resource)
 
 

@@ -1,4 +1,4 @@
-class_name SafeIOLoader extends ResourceFormatLoader
+class_name SafeResourceIOLoader extends ResourceFormatLoader
 
 
 class LoadMetadata:
@@ -41,7 +41,7 @@ class LoadMetadata:
 
 
 func _get_recognized_extensions() -> PackedStringArray:
-	return SafeIO.get_recognized_extensions()
+	return SafeResourceIO.get_recognized_extensions()
 
 
 func _get_resource_script_class(path: String) -> String:
@@ -50,8 +50,8 @@ func _get_resource_script_class(path: String) -> String:
 	if file_contents is Error:
 		return ""
 
-	var type := str(file_contents.get(SafeIO.TYPE_MARKER))
-	var register := SafeIOResourceRegister.get_register()
+	var type := str(file_contents.get(SafeResourceIO.TYPE_MARKER))
+	var register := SafeResourceIORegister.get_register()
 	return register.get_registered_script_name(path) if register else ""
 
 
@@ -61,7 +61,7 @@ func _get_resource_type(path: String) -> String:
 	if file_contents is Error:
 		return ""
 
-	var type := str(file_contents.get(SafeIO.TYPE_MARKER))
+	var type := str(file_contents.get(SafeResourceIO.TYPE_MARKER))
 	return type if ClassDB.class_exists(type) else "Resource"
 
 
@@ -77,7 +77,7 @@ func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_m
 	if load_result is Error:
 		return load_result
 
-	var dependency_data = load_result.get(SafeIO.DEPENDENCIES_MARKER)
+	var dependency_data = load_result.get(SafeResourceIO.DEPENDENCIES_MARKER)
 	
 	var metadata := LoadMetadata.new(
 		dependency_data if dependency_data is Dictionary else {},
@@ -105,7 +105,7 @@ func _load_dependency(object_id: int, metadata: LoadMetadata) -> Resource:
 			result = _deserialize_resource(object_data, metadata)
 
 		TYPE_STRING:
-			var register = SafeIOResourceRegister.get_register()
+			var register = SafeResourceIORegister.get_register()
 			if not register or not register.is_resource_safe(object_data):
 				return null
 			else:
@@ -123,7 +123,7 @@ func _load_dependency(object_id: int, metadata: LoadMetadata) -> Resource:
 func _load_file(path: String):
 
 	var data
-	if path.ends_with(SafeIO.BINARY_FILE_FORMAT):
+	if path.ends_with(SafeResourceIO.BINARY_FILE_FORMAT):
 		var file := FileAccess.open_compressed(path, FileAccess.READ)
 		if not file:
 			return FileAccess.get_open_error()
@@ -148,7 +148,7 @@ func _load_file(path: String):
 ## Returns the [Resource] on success or a null value on failure.
 func _deserialize_resource(object_data: Dictionary, metadata: LoadMetadata) -> Resource:
 
-	var type := str(object_data.get(SafeIO.TYPE_MARKER))
+	var type := str(object_data.get(SafeResourceIO.TYPE_MARKER))
 	var resource := _instantiate_resource(type)
 	if resource == null:
 		return null
@@ -156,10 +156,10 @@ func _deserialize_resource(object_data: Dictionary, metadata: LoadMetadata) -> R
 	if metadata.base_resource == null:
 		metadata.base_resource = resource
 
-	var property_list := SafeIO.get_serializeable_properties(resource)
+	var property_list := SafeResourceIO.get_serializeable_properties(resource)
 	for property in property_list:
 
-		var json_name := SafeIO.get_serialized_name(property)
+		var json_name := SafeResourceIO.get_serialized_name(property)
 		if not json_name in object_data:
 			continue
 
@@ -181,16 +181,16 @@ func _deserialize_value(value, metadata: LoadMetadata):
 	match typeof(value):
 
 		TYPE_STRING:
-			if value == SafeIO.ROOT_OBJECT_MARKER:
+			if value == SafeResourceIO.ROOT_OBJECT_MARKER:
 				return metadata.base_resource
 
-			if value.begins_with(SafeIO.OBJECT_MARKER):
-				return _load_dependency(value.trim_prefix(SafeIO.OBJECT_MARKER).to_int(), metadata)
+			if value.begins_with(SafeResourceIO.OBJECT_MARKER):
+				return _load_dependency(value.trim_prefix(SafeResourceIO.OBJECT_MARKER).to_int(), metadata)
 
 			return JSON.to_native(value)
 
 		TYPE_ARRAY:
-			if value[0] is String and ":" not in value[0] and value[0] != SafeIO.ROOT_OBJECT_MARKER:
+			if value[0] is String and ":" not in value[0] and value[0] != SafeResourceIO.ROOT_OBJECT_MARKER:
 				return JSON.to_native({ "type": value[0], "args": value.slice(1) })
 
 			return value.map(_deserialize_value.bind(metadata))
@@ -219,19 +219,15 @@ func _deserialize_value(value, metadata: LoadMetadata):
 ## Expects the name of a built-in type, or the path to a custom script.
 func _instantiate_resource(type: String) -> Resource:
 
-	var register = SafeIOResourceRegister.get_register()
+	var register = SafeResourceIORegister.get_register()
 	if not register:
 		return null
 
-	if ClassDB.class_exists(type):
-
-		if not ClassDB.is_parent_class(type, &"Resource"):
-			return null
-
-		return ClassDB.instantiate(type)
-
 	if not register.is_resource_safe(type):
 		return null
+
+	if ClassDB.class_exists(type):
+		return ClassDB.instantiate(type)
 
 	var script := load(type)
 	if script is not Script:

@@ -3,8 +3,8 @@
 /android/
 
 addons/*
-!addons/safe_io
-addons/safe_io/resource_register.res
+!addons/safe_resource_io
+addons/safe_resource_io/resource_register.res
 
 demo/text_resource.sav*
 demo/binary_resource.bin*

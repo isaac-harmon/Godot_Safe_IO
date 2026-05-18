@@ -16,6 +16,9 @@ enum TestEnum {
 @export var string_name: StringName
 @export var node_path: NodePath
 
+@export var registered_type := InputEventKey.new()
+@export var unregistered_type := InputEventMouseButton.new()
+
 @export var self_ref: TestResource
 @export var sub_resource: TestResource
 @export var external_trusted_resource: TestResource

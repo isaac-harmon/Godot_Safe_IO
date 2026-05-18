@@ -4,7 +4,7 @@
     "-9223371954847741885": {
       "<type>": "uid://bgetirful6b64",
       "boolean": true,
-      "sub_resource": "<rootobj>"
+      "sub_resource": "obj:<root>"
     }
   },
   "<type>": "uid://bgetirful6b64",
@@ -103,7 +103,7 @@
   "plane": ["Plane", 0.0, 0.0, 1.0, 0.0],
   "rect_2": ["Rect2", 1.0, 1.0, 1.0, 1.0],
   "rect_2i": ["Rect2i", 1, 1, 1, 1],
-  "self_ref": "<rootobj>",
+  "self_ref": "obj:<root>",
   "string": "s:4",
   "string_name": "sn:5",
   "sub_resource": "obj:-9223371954847741885",

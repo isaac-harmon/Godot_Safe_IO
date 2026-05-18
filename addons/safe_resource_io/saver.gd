@@ -1,4 +1,4 @@
-class_name SafeIOSaver extends ResourceFormatSaver
+class_name SafeResourceIOSaver extends ResourceFormatSaver
 
 class SaveMetadata:
 	var keep_compressed: bool
@@ -8,7 +8,7 @@ class SaveMetadata:
 
 
 func _get_recognized_extensions(_resource: Resource) -> PackedStringArray:
-	return SafeIO.get_recognized_extensions()
+	return SafeResourceIO.get_recognized_extensions()
 
 
 func _recognize(resource: Resource) -> bool:
@@ -18,7 +18,7 @@ func _recognize(resource: Resource) -> bool:
 func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) -> Error:
 
 	var metadata := SaveMetadata.new()
-	metadata.keep_compressed = path.ends_with(SafeIO.BINARY_FILE_FORMAT)
+	metadata.keep_compressed = path.ends_with(SafeResourceIO.BINARY_FILE_FORMAT)
 	metadata.save_flags = flags
 	metadata.base_resource = resource
 
@@ -29,7 +29,7 @@ func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) ->
 		for dependency in metadata.dependency_cache:
 			dependencies[dependency.get_instance_id()] = metadata.dependency_cache[dependency]
 
-		resource_data[SafeIO.DEPENDENCIES_MARKER] = dependencies
+		resource_data[SafeResourceIO.DEPENDENCIES_MARKER] = dependencies
 
 	return _save_to_file(resource_data, path, metadata.keep_compressed)
 
@@ -98,17 +98,17 @@ func _serialize_dictionary(dictionary: Dictionary, metadata: SaveMetadata) -> Di
 func _serialize_resource(resource: Resource, metadata: SaveMetadata) -> Dictionary[String, Variant]:
 
 	var output: Dictionary[String, Variant]
-	for property in SafeIO.get_serializeable_properties(resource):
+	for property in SafeResourceIO.get_serializeable_properties(resource):
 		var value = resource.get(property)
 		if value != _get_property_default_value(resource, property):
-			output[SafeIO.get_serialized_name(property)] = _serialize_value(value, metadata)
+			output[SafeResourceIO.get_serialized_name(property)] = _serialize_value(value, metadata)
 
 	var custom_script: Script = resource.get_script()
 
 	if custom_script:
-		output[SafeIO.TYPE_MARKER] = ResourceUID.path_to_uid(custom_script.resource_path)
+		output[SafeResourceIO.TYPE_MARKER] = ResourceUID.path_to_uid(custom_script.resource_path)
 	else:
-		output[SafeIO.TYPE_MARKER] = resource.get_class()
+		output[SafeResourceIO.TYPE_MARKER] = resource.get_class()
 
 	return output
 
@@ -137,7 +137,7 @@ func _serialize_value(value, metadata: SaveMetadata):
 				return null
 
 			if value == metadata.base_resource:
-				return SafeIO.ROOT_OBJECT_MARKER
+				return SafeResourceIO.ROOT_OBJECT_MARKER
 
 			if value.resource_path and not metadata.save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES:
 				metadata.dependency_cache[value] = ResourceUID.path_to_uid(value.resource_path)
@@ -146,7 +146,7 @@ func _serialize_value(value, metadata: SaveMetadata):
 				metadata.dependency_cache[value] = true
 				metadata.dependency_cache[value] = _serialize_resource(value, metadata)
 
-			return SafeIO.OBJECT_MARKER + str(value.get_instance_id())
+			return SafeResourceIO.OBJECT_MARKER + str(value.get_instance_id())
 
 		_:
 			if metadata.keep_compressed:
