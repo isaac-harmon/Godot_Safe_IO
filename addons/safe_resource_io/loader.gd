@@ -5,9 +5,7 @@ class LoadMetadata:
 
 	var base_resource: Resource
 	var cache_mode: ResourceLoader.CacheMode
-
-	var raw_dependency_data: Dictionary[int, Variant]
-	var dependency_cache: Dictionary[int, Resource]
+	var dependency_cache: Dictionary[int, Variant]
 
 
 	func _init(dependency_data: Dictionary, cache_mode: ResourceFormatLoader.CacheMode) -> void:
@@ -24,20 +22,13 @@ class LoadMetadata:
 				self.cache_mode = ResourceLoader.CACHE_MODE_REUSE
 
 		for entry in dependency_data:
-
-			var object_id: int
 			match typeof(entry):
 
 				TYPE_INT:
-					object_id = entry
+					dependency_cache[entry] = dependency_data[entry]
 
 				TYPE_STRING:
-					object_id = entry.to_int()
-
-				_:
-					continue
-
-			raw_dependency_data[object_id] = dependency_data[entry]
+					dependency_cache[entry.to_int()] = dependency_data[entry]
 
 
 func _get_recognized_extensions() -> PackedStringArray:
@@ -72,18 +63,18 @@ func _handles_type(_type: StringName) -> bool:
 func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_mode: CacheMode):
 
 	path = ResourceUID.ensure_path(path)
-	
+
 	var load_result = _load_file(path)
+
 	if load_result is Error:
 		return load_result
 
 	var dependency_data = load_result.get(SafeResourceIO.DEPENDENCIES_MARKER)
-	
 	var metadata := LoadMetadata.new(
 		dependency_data if dependency_data is Dictionary else {},
 		cache_mode
 	)
-	
+
 	var resource := _deserialize_resource(load_result, metadata)
 	if resource == null:
 		return Error.ERR_FILE_CORRUPT
@@ -93,23 +84,21 @@ func _load(path: String, _original_path: String, _use_sub_threads: bool, cache_m
 
 func _load_dependency(object_id: int, metadata: LoadMetadata) -> Resource:
 
-	if object_id in metadata.dependency_cache:
-		return metadata.dependency_cache[object_id]
-
-	var object_data = metadata.raw_dependency_data.get(object_id)
+	var cached_data = metadata.dependency_cache.get(object_id)
 	var result: Resource
 
-	match typeof(object_data):
+	match typeof(cached_data):
+
+		TYPE_OBJECT:
+			return cached_data
 
 		TYPE_DICTIONARY:
-			result = _deserialize_resource(object_data, metadata)
+			result = _deserialize_resource(cached_data, metadata)
 
 		TYPE_STRING:
 			var register = SafeResourceIORegister.get_register()
-			if not register or not register.is_resource_safe(object_data):
-				return null
-			else:
-				result = ResourceLoader.load(object_data, "", metadata.cache_mode)
+			if register != null and register.is_resource_safe(cached_data):
+				result = ResourceLoader.load(cached_data, "", metadata.cache_mode)
 
 		_:
 			return null
@@ -125,14 +114,14 @@ func _load_file(path: String):
 	var data
 	if path.ends_with(SafeResourceIO.BINARY_FILE_FORMAT):
 		var file := FileAccess.open_compressed(path, FileAccess.READ)
-		if not file:
+		if file == null:
 			return FileAccess.get_open_error()
 
 		data = file.get_var()
 
 	else:
 		var file := FileAccess.open(path, FileAccess.READ)
-		if not file:
+		if file == null:
 			return FileAccess.get_open_error()
 
 		var json := JSON.new()
@@ -142,6 +131,31 @@ func _load_file(path: String):
 		data = json.data
 
 	return data if data is Dictionary else Error.ERR_INVALID_DATA
+
+
+func _deserialize_array(array: Array, metadata: LoadMetadata):
+
+	if array[0] is String and ":" not in array[0]:
+		return JSON.to_native({ "type": array[0], "args": array.slice(1) })
+
+	return array.map(_deserialize_value.bind(metadata))
+
+
+func _deserialize_dictionary(dict: Dictionary, metadata: LoadMetadata) -> Dictionary:
+
+	var output: Dictionary
+	for key in dict:
+
+		var converted_key
+		match key:
+			"<null>": converted_key = null
+			"false": converted_key = false
+			"true": converted_key = true
+			_: converted_key = _deserialize_value(key, metadata)
+
+		output[converted_key] = _deserialize_value(dict[key], metadata)
+
+	return output
 
 
 ## Converts any valid [Dictionary] into its corresponding type.
@@ -160,7 +174,7 @@ func _deserialize_resource(object_data: Dictionary, metadata: LoadMetadata) -> R
 	for property in property_list:
 
 		var json_name := SafeResourceIO.get_serialized_name(property)
-		if not json_name in object_data:
+		if json_name not in object_data:
 			continue
 
 		var value = _deserialize_value(object_data[json_name], metadata)
@@ -176,40 +190,29 @@ func _deserialize_resource(object_data: Dictionary, metadata: LoadMetadata) -> R
 	return resource
 
 
+func _deserialize_string(str: String, metadata: LoadMetadata):
+
+	if str == SafeResourceIO.ROOT_OBJECT_MARKER:
+		return metadata.base_resource
+
+	if str.begins_with(SafeResourceIO.OBJECT_MARKER):
+		return _load_dependency(str.trim_prefix(SafeResourceIO.OBJECT_MARKER).to_int(), metadata)
+
+	return JSON.to_native(str)
+
+
 func _deserialize_value(value, metadata: LoadMetadata):
 
 	match typeof(value):
 
 		TYPE_STRING:
-			if value == SafeResourceIO.ROOT_OBJECT_MARKER:
-				return metadata.base_resource
-
-			if value.begins_with(SafeResourceIO.OBJECT_MARKER):
-				return _load_dependency(value.trim_prefix(SafeResourceIO.OBJECT_MARKER).to_int(), metadata)
-
-			return JSON.to_native(value)
+			return _deserialize_string(value, metadata)
 
 		TYPE_ARRAY:
-			if value[0] is String and ":" not in value[0] and value[0] != SafeResourceIO.ROOT_OBJECT_MARKER:
-				return JSON.to_native({ "type": value[0], "args": value.slice(1) })
-
-			return value.map(_deserialize_value.bind(metadata))
+			return _deserialize_array(value, metadata)
 
 		TYPE_DICTIONARY:
-			var output: Dictionary
-			for key in value:
-
-				var converted_key = key
-				match key:
-					"<null>": converted_key = null
-					"false": converted_key = false
-					"true": converted_key = true
-
-				converted_key = _deserialize_value(converted_key, metadata)
-				var converted_value = _deserialize_value(value[key], metadata)
-				output[converted_key] = converted_value
-
-			return output
+			return _deserialize_dictionary(value, metadata)
 
 		_:
 			return value
@@ -220,7 +223,7 @@ func _deserialize_value(value, metadata: LoadMetadata):
 func _instantiate_resource(type: String) -> Resource:
 
 	var register = SafeResourceIORegister.get_register()
-	if not register:
+	if register == null:
 		return null
 
 	if not register.is_resource_safe(type):

@@ -4,7 +4,7 @@ class SaveMetadata:
 	var keep_compressed: bool
 	var save_flags: ResourceSaver.SaverFlags
 	var base_resource: Resource
-	var dependency_cache: Dictionary[Resource, Variant]
+	var dependency_cache: Dictionary[int, Variant]
 
 
 func _get_recognized_extensions(_resource: Resource) -> PackedStringArray:
@@ -24,12 +24,7 @@ func _save(resource: Resource, path: String, flags: ResourceSaver.SaverFlags) ->
 
 	var resource_data := _serialize_resource(resource, metadata)
 	if metadata.dependency_cache:
-
-		var dependencies: Dictionary
-		for dependency in metadata.dependency_cache:
-			dependencies[dependency.get_instance_id()] = metadata.dependency_cache[dependency]
-
-		resource_data[SafeResourceIO.DEPENDENCIES_MARKER] = dependencies
+		resource_data[SafeResourceIO.DEPENDENCIES_MARKER] = metadata.dependency_cache
 
 	return _save_to_file(resource_data, path, metadata.keep_compressed)
 
@@ -38,7 +33,7 @@ func _save_to_file(resource_data: Dictionary, path: String, compress: bool) -> E
 
 	if compress:
 		var file := FileAccess.open_compressed(path, FileAccess.WRITE)
-		if not file:
+		if file == null:
 			return FileAccess.get_open_error()
 
 		if not file.store_var(resource_data):
@@ -46,7 +41,7 @@ func _save_to_file(resource_data: Dictionary, path: String, compress: bool) -> E
 
 	else:
 		var file := FileAccess.open(path, FileAccess.WRITE)
-		if not file:
+		if file == null:
 			return FileAccess.get_open_error()
 
 		var json_string := JSON.stringify(resource_data, "\t")
@@ -66,7 +61,7 @@ func _get_property_default_value(resource: Resource, property: StringName):
 	var script: Script = resource.get_script()
 	while script != null:
 
-		if property in script.get_script_property_list().map(func(p): return p["name"]):
+		if property in script.get_script_property_list().map(func(p: Dictionary) -> String: return p.name):
 			return script.get_property_default_value(property)
 
 		script = script.get_base_script()
@@ -88,7 +83,7 @@ func _serialize_dictionary(dictionary: Dictionary, metadata: SaveMetadata) -> Di
 			_ when not metadata.keep_compressed:
 				new_key = JSON.from_native(new_key)
 				if new_key is not String:
-					new_key
+					continue
 
 		serialized[new_key] = _serialize_value(dictionary[key], metadata)
 
@@ -119,10 +114,10 @@ func _serialize_value(value, metadata: SaveMetadata):
 
 		TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_FLOAT:
 			return value
-		
+
 		TYPE_STRING:
 			return JSON.from_native(value)
-		
+
 		TYPE_STRING_NAME, TYPE_NODE_PATH:
 			return value if metadata.keep_compressed else JSON.from_native(value)
 
@@ -139,19 +134,31 @@ func _serialize_value(value, metadata: SaveMetadata):
 			if value == metadata.base_resource:
 				return SafeResourceIO.ROOT_OBJECT_MARKER
 
-			if value.resource_path and not metadata.save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES:
-				metadata.dependency_cache[value] = ResourceUID.path_to_uid(value.resource_path)
-
-			elif value not in metadata.dependency_cache:
-				metadata.dependency_cache[value] = true
-				metadata.dependency_cache[value] = _serialize_resource(value, metadata)
-
-			return SafeResourceIO.OBJECT_MARKER + str(value.get_instance_id())
+			return _update_dependency_cache(value, metadata)
 
 		_:
 			if metadata.keep_compressed:
 				return value 
 
 			var json_output: Dictionary = JSON.from_native(value)
-			json_output["args"].push_front(json_output["type"])
-			return json_output["args"]
+			json_output.args.push_front(json_output.type)
+			return json_output.args
+
+
+func _update_dependency_cache(resource: Resource, metadata: SaveMetadata) -> String:
+
+	var object_id: int = resource.get_instance_id()
+
+	if object_id not in metadata.dependency_cache:
+		if (
+			not metadata.save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES
+			and resource.resource_path
+			and ResourceLoader.exists(resource.resource_path)
+		):
+			metadata.dependency_cache[object_id] = ResourceUID.path_to_uid(resource.resource_path)
+
+		else:
+			metadata.dependency_cache[object_id] = true # Prevents infinite recursion
+			metadata.dependency_cache[object_id] = _serialize_resource(resource, metadata)
+
+	return SafeResourceIO.OBJECT_MARKER + str(object_id)

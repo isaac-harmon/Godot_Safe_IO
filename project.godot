@@ -12,23 +12,15 @@ config_version=5
 
 config/name="SafeResourceIO"
 run/main_scene="uid://b8mgm3yfols8v"
-config/features=PackedStringArray("4.6", "Forward Plus")
+config/features=PackedStringArray("4.7", "Forward Plus")
 
 [dotnet]
 
-project/assembly_name="SafeIO"
+project/assembly_name="SafeResourceIO"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/gut/plugin.cfg", "res://addons/safe_io/plugin.cfg")
-
-[physics]
-
-3d/physics_engine="Jolt Physics"
-
-[rendering]
-
-rendering_device/driver.windows="d3d12"
+enabled=PackedStringArray("res://addons/gut/plugin.cfg", "res://addons/safe_resource_io/plugin.cfg")
 
 [safe_resource_io]
 

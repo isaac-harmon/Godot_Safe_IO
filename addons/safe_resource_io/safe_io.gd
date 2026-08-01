@@ -32,8 +32,8 @@ static func get_serializeable_properties(resource: Resource) -> Dictionary[Strin
 	# Building list
 	var property_list: Dictionary[String, int]
 	for property in resource.get_property_list():
-		if property["usage"] & PROPERTY_USAGE_STORAGE:
-			property_list[property["name"]] = property["type"]
+		if property.usage & PROPERTY_USAGE_STORAGE:
+			property_list[property.name] = property.type
 
 	# erasing unneeded entries to reduce resulting file size
 	property_list.erase("script")
@@ -52,7 +52,9 @@ static func get_serialized_name(name: String) -> String:
 
 func _enable_plugin() -> void:
 
-	ProjectSettings.set_setting(REGISTERED_BASE_TYPES, PackedStringArray())
+	if not ProjectSettings.has_setting(REGISTERED_BASE_TYPES):
+		ProjectSettings.set_setting(REGISTERED_BASE_TYPES, PackedStringArray())
+
 	ProjectSettings.set_as_basic(REGISTERED_BASE_TYPES, true)
 	ProjectSettings.add_property_info({
 		"name": REGISTERED_BASE_TYPES,
@@ -64,7 +66,9 @@ func _enable_plugin() -> void:
 		]
 	})
 
-	ProjectSettings.set_setting(REGISTERED_DIRS, PackedStringArray())
+	if not ProjectSettings.has_setting(REGISTERED_DIRS):
+		ProjectSettings.set_setting(REGISTERED_DIRS, PackedStringArray())
+
 	ProjectSettings.set_as_basic(REGISTERED_DIRS, true)
 	ProjectSettings.add_property_info({
 		"name": REGISTERED_DIRS,
@@ -75,7 +79,9 @@ func _enable_plugin() -> void:
 		]
 	})
 
-	ProjectSettings.set_setting(REGISTERED_FILES, PackedStringArray())
+	if not ProjectSettings.has_setting(REGISTERED_FILES):
+		ProjectSettings.set_setting(REGISTERED_FILES, PackedStringArray())
+
 	ProjectSettings.set_as_basic(REGISTERED_FILES, true)
 	ProjectSettings.add_property_info({
 		"name": REGISTERED_FILES,
@@ -86,16 +92,15 @@ func _enable_plugin() -> void:
 		]
 	})
 
-	ProjectSettings.settings_changed.connect(func():
-		if ProjectSettings.check_changed_settings_in_group("safe_resource_io"):
-			rebake_required = true
-	)
+	ProjectSettings.settings_changed.connect(_on_project_settings_changed)
 
 
 func _disable_plugin() -> void:
 	ProjectSettings.set_setting(REGISTERED_BASE_TYPES, null)
 	ProjectSettings.set_setting(REGISTERED_FILES, null)
 	ProjectSettings.set_setting(REGISTERED_DIRS, null)
+
+	ProjectSettings.settings_changed.disconnect(_on_project_settings_changed)
 
 
 func _build() -> bool:
@@ -116,3 +121,8 @@ func _get_all_resource_types() -> PackedStringArray:
 
 	output.sort()
 	return output
+
+
+func _on_project_settings_changed() -> void:
+	if ProjectSettings.check_changed_settings_in_group("safe_resource_io"):
+		rebake_required = true
