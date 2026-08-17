@@ -11,8 +11,24 @@ const ROOT_OBJECT_MARKER = "obj:<root>"
 const REGISTERED_BASE_TYPES = "safe_resource_io/general/registered_base_types"
 const REGISTERED_DIRS = "safe_resource_io/general/registered_resource_directories"
 const REGISTERED_FILES = "safe_resource_io/general/registered_resource_files"
+const NAME_EXPRESSION = "safe_resource_io/general/serialized_name_expression"
+
+const NAME_EXPRESSION_DEFAULT = "name.lstrip(\"_\").to_snake_case()"
 
 var rebake_required := true
+
+
+## Returns an [Expression] object which has parsed the expression text
+## specified at "safe_resource_io/advanced/serialized_name_expression"
+static func get_name_expression() -> Expression:
+
+	var expression := Expression.new()
+	var expression_string: String = ProjectSettings.get_setting(NAME_EXPRESSION, NAME_EXPRESSION_DEFAULT)
+
+	if expression.parse(expression_string, ["name"]) != Error.OK:
+		expression.parse(NAME_EXPRESSION_DEFAULT, ["name"])
+
+	return expression
 
 
 ## Returns an array of all file extentions recognized by [SafeResourceIOSaver] and [SafeResourceIOLoader].
@@ -43,13 +59,6 @@ static func get_serializeable_properties(resource: Resource) -> Dictionary[Strin
 	return property_list
 
 
-## Converts a string to snake_case and strips leading underscores.
-## Used to ensure a consistent naming convention of properties,
-## regardless of the naming convention used in source code.
-static func get_serialized_name(name: String) -> String:
-	return name.lstrip("_").to_snake_case()
-
-
 func _enable_plugin() -> void:
 
 	if not ProjectSettings.has_setting(REGISTERED_BASE_TYPES):
@@ -61,8 +70,8 @@ func _enable_plugin() -> void:
 		"type": TYPE_PACKED_STRING_ARRAY,
 		"hint_string": "%d/%d:%s" % [
 			TYPE_STRING,
-			PROPERTY_HINT_ENUM_SUGGESTION,
-			",".join(_get_all_resource_types()),
+			PROPERTY_HINT_ENUM,
+			",".join(_get_all_engine_resource_types()),
 		]
 	})
 
@@ -92,6 +101,16 @@ func _enable_plugin() -> void:
 		]
 	})
 
+	if not ProjectSettings.has_setting(NAME_EXPRESSION):
+		ProjectSettings.set_setting(NAME_EXPRESSION, NAME_EXPRESSION_DEFAULT)
+
+	ProjectSettings.set_initial_value(NAME_EXPRESSION, NAME_EXPRESSION_DEFAULT)
+	ProjectSettings.add_property_info({
+		"name": NAME_EXPRESSION,
+		"type": TYPE_STRING,
+		"hint": PROPERTY_HINT_EXPRESSION,
+	})
+
 	ProjectSettings.settings_changed.connect(_on_project_settings_changed)
 
 
@@ -99,8 +118,7 @@ func _disable_plugin() -> void:
 	ProjectSettings.set_setting(REGISTERED_BASE_TYPES, null)
 	ProjectSettings.set_setting(REGISTERED_FILES, null)
 	ProjectSettings.set_setting(REGISTERED_DIRS, null)
-
-	ProjectSettings.settings_changed.disconnect(_on_project_settings_changed)
+	ProjectSettings.set_setting(NAME_EXPRESSION, null)
 
 
 func _build() -> bool:
@@ -112,7 +130,7 @@ func _build() -> bool:
 	return not rebake_required
 
 
-func _get_all_resource_types() -> PackedStringArray:
+func _get_all_engine_resource_types() -> PackedStringArray:
 
 	var output: PackedStringArray
 	for type in ClassDB.get_class_list():

@@ -1,36 +1,6 @@
 class_name SafeResourceIOLoader extends ResourceFormatLoader
 
 
-class LoadMetadata:
-
-	var base_resource: Resource
-	var cache_mode: ResourceLoader.CacheMode
-	var dependency_cache: Dictionary[int, Variant]
-
-
-	func _init(dependency_data: Dictionary, cache_mode: ResourceFormatLoader.CacheMode) -> void:
-
-		match cache_mode:
-
-			ResourceFormatLoader.CACHE_MODE_IGNORE_DEEP:
-				self.cache_mode = ResourceLoader.CACHE_MODE_IGNORE_DEEP
-
-			ResourceFormatLoader.CACHE_MODE_REPLACE_DEEP:
-				self.cache_mode = ResourceLoader.CACHE_MODE_REPLACE_DEEP
-
-			_:
-				self.cache_mode = ResourceLoader.CACHE_MODE_REUSE
-
-		for entry in dependency_data:
-			match typeof(entry):
-
-				TYPE_INT:
-					dependency_cache[entry] = dependency_data[entry]
-
-				TYPE_STRING:
-					dependency_cache[entry.to_int()] = dependency_data[entry]
-
-
 func _get_recognized_extensions() -> PackedStringArray:
 	return SafeResourceIO.get_recognized_extensions()
 
@@ -171,10 +141,12 @@ func _deserialize_resource(object_data: Dictionary, metadata: LoadMetadata) -> R
 		metadata.base_resource = resource
 
 	var property_list := SafeResourceIO.get_serializeable_properties(resource)
+	var name_expression := SafeResourceIO.get_name_expression()
+	
 	for property in property_list:
 
-		var json_name := SafeResourceIO.get_serialized_name(property)
-		if json_name not in object_data:
+		var json_name := str(name_expression.execute([property]))
+		if name_expression.has_execute_failed() or json_name not in object_data:
 			continue
 
 		var value = _deserialize_value(object_data[json_name], metadata)
@@ -241,3 +213,44 @@ func _instantiate_resource(type: String) -> Resource:
 		return null
 
 	return script.new()
+
+
+class LoadMetadata:
+
+	## The top level resource being loaded
+	var base_resource: Resource
+
+	## Cache mode for external dependencies
+	var cache_mode: ResourceLoader.CacheMode
+
+	## Data for all needed dependencies, keyed by an id.
+	## The type of resulting value will determine how they need to be handled.[br][br]
+	## [Dictionary]: Sub-resource[br]
+	## [String]: External resource[br]
+	## [Object]: A cached resource that was previously loaded[br][br]
+	## Any other types are invalid data and should be discarded.
+	var dependency_cache: Dictionary[int, Variant]
+
+
+	func _init(dependency_data: Dictionary, cache_mode: ResourceFormatLoader.CacheMode) -> void:
+
+		match cache_mode:
+
+			ResourceFormatLoader.CACHE_MODE_IGNORE_DEEP:
+				self.cache_mode = ResourceLoader.CACHE_MODE_IGNORE_DEEP
+
+			ResourceFormatLoader.CACHE_MODE_REPLACE_DEEP:
+				self.cache_mode = ResourceLoader.CACHE_MODE_REPLACE_DEEP
+
+			_:
+				self.cache_mode = ResourceLoader.CACHE_MODE_REUSE
+
+		for entry in dependency_data:
+
+			var id: int
+			match typeof(entry):
+				TYPE_INT: id = entry
+				TYPE_STRING: id = entry.to_int()
+				_: continue
+
+			dependency_cache[id] = dependency_data[entry]

@@ -1,11 +1,5 @@
 class_name SafeResourceIOSaver extends ResourceFormatSaver
 
-class SaveMetadata:
-	var keep_compressed: bool
-	var save_flags: ResourceSaver.SaverFlags
-	var base_resource: Resource
-	var dependency_cache: Dictionary[int, Variant]
-
 
 func _get_recognized_extensions(_resource: Resource) -> PackedStringArray:
 	return SafeResourceIO.get_recognized_extensions()
@@ -92,11 +86,20 @@ func _serialize_dictionary(dictionary: Dictionary, metadata: SaveMetadata) -> Di
 
 func _serialize_resource(resource: Resource, metadata: SaveMetadata) -> Dictionary[String, Variant]:
 
+	var name_expression := SafeResourceIO.get_name_expression()
 	var output: Dictionary[String, Variant]
+
 	for property in SafeResourceIO.get_serializeable_properties(resource):
+
 		var value = resource.get(property)
-		if value != _get_property_default_value(resource, property):
-			output[SafeResourceIO.get_serialized_name(property)] = _serialize_value(value, metadata)
+		if value == _get_property_default_value(resource, property):
+			continue
+
+		var json_name = str(name_expression.execute([property]))
+		if name_expression.has_execute_failed():
+			continue
+
+		output[json_name] = _serialize_value(value, metadata)
 
 	var custom_script: Script = resource.get_script()
 
@@ -148,8 +151,8 @@ func _serialize_value(value, metadata: SaveMetadata):
 func _update_dependency_cache(resource: Resource, metadata: SaveMetadata) -> String:
 
 	var object_id: int = resource.get_instance_id()
-
 	if object_id not in metadata.dependency_cache:
+
 		if (
 			not metadata.save_flags & ResourceSaver.FLAG_BUNDLE_RESOURCES
 			and resource.resource_path
@@ -162,3 +165,18 @@ func _update_dependency_cache(resource: Resource, metadata: SaveMetadata) -> Str
 			metadata.dependency_cache[object_id] = _serialize_resource(resource, metadata)
 
 	return SafeResourceIO.OBJECT_MARKER + str(object_id)
+
+
+class SaveMetadata:
+
+	## Whether the file is being kept as compressed binary data or converted to json
+	var keep_compressed: bool
+
+	## The flags passed to the saver on save request
+	var save_flags: ResourceSaver.SaverFlags
+
+	## The top-level resource being saved
+	var base_resource: Resource
+
+	## [Dictionary] of any information needed to load all needed dependencies
+	var dependency_cache: Dictionary[int, Variant]
